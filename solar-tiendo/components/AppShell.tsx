@@ -1,7 +1,8 @@
 'use client'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { totalPct } from '@/lib/calc'
 import { Item, Progress, Project } from '@/lib/supabase'
+import { useEffect, useState } from 'react'
 
 const TABS = [
   { path: '/dashboard', icon: 'ti-layout-dashboard', label: 'Tổng quan' },
@@ -18,17 +19,22 @@ interface Props {
 }
 
 export default function AppShell({ project, items, progressMap, children }: Props) {
-  const path = usePathname()
+  const path   = usePathname()
+  const router = useRouter()
+  const [pid, setPid] = useState('')
+
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get('project') ?? ''
+    setPid(p)
+  }, [])
+
   const tp   = totalPct(items, progressMap)
   const pct  = Math.round(tp * 100)
   const circ = 2 * Math.PI * 22
   const dash = circ * tp
 
   function navigate(tabPath: string) {
-    // Đọc trực tiếp từ window.location — không dùng state
-    const pid = new URLSearchParams(window.location.search).get('project')
-    const url = pid ? `${tabPath}?project=${pid}` : tabPath
-    window.location.href = url
+    window.location.href = pid ? `${tabPath}?project=${pid}` : tabPath
   }
 
   return (
@@ -43,7 +49,7 @@ export default function AppShell({ project, items, progressMap, children }: Prop
           <div style={{ background:'#F5A623', color:'#0d1b3e', fontWeight:700,
             fontSize:10, width:36, height:36, borderRadius:8, flexShrink:0,
             display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}
-            onClick={() => { window.location.href = '/projects' }}>HTE</div>
+            onClick={() => window.location.href = '/projects'}>HTE</div>
           <div style={{ minWidth:0 }}>
             <div style={{ fontSize:13, fontWeight:700, color:'#fff',
               overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
@@ -68,7 +74,9 @@ export default function AppShell({ project, items, progressMap, children }: Prop
             </text>
           </svg>
           <div>
-            <div style={{ fontSize:10, color:'#8899bb' }}>{project?.total_days ?? 60} ngày</div>
+            <div style={{ fontSize:10, color:'#8899bb' }}>
+              {project?.total_days ?? 60} ngày
+            </div>
           </div>
         </div>
       </header>
