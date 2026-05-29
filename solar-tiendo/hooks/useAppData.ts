@@ -6,8 +6,6 @@ import {
   upsertProgress, upsertGantt, subscribeProgress, subscribeGantt
 } from '@/lib/queries'
 
-const PROJECT_ID = '00000000-0000-0000-0000-000000000001'
-
 export function useAppData() {
   const [project,     setProject]     = useState<Project | null>(null)
   const [zones,       setZones]       = useState<Zone[]>([])
@@ -15,60 +13,66 @@ export function useAppData() {
   const [progressMap, setProgressMap] = useState<Record<string, Progress>>({})
   const [ganttMap,    setGanttMap]    = useState<Record<string, GanttDate>>({})
   const [loading,     setLoading]     = useState(true)
-  const [projectId,   setProjectId]   = useState<string>(PROJECT_ID)
+  const [projectId,   setProjectId]   = useState<string>('')
 
-  // Load initial data
   useEffect(() => {
+    // Lấy project ID từ URL params (?project=xxx)
+    const params = new URLSearchParams(window.location.search)
+    const pid = params.get('project')
+
     async function load() {
       setLoading(true)
       try {
-        // Get or create project
-        let { data: proj } = await supabase.from('projects').select('*').single()
-        if (!proj) {
-          const { data: newProj } = await supabase.from('projects').insert({
-            id:         PROJECT_ID,
-            name:       'Điện mặt trời Louvre',
-            client:     'Công ty TNHH Dệt Sợi Louvre',
-            factory:    'Nhà máy Dệt Sợi Louvre',
-            contractor: 'TTCE-HTE',
-            start_date: new Date().toISOString().split('T')[0],
-            total_days: 60,
-          }).select().single()
-          proj = newProj
+        let proj: Project | null = null
 
-          // Add current user as admin
+        if (pid) {
+          // Dùng project ID từ URL
+          const { data } = await supabase.from('projects').select('*').eq('id', pid).single()
+          proj = data
+        } else {
+          // Lấy project đầu tiên của user
           const { data: { user } } = await supabase.auth.getUser()
           if (user) {
-            await supabase.from('project_members').insert({
-              project_id: proj!.id, user_id: user.id, role: 'admin'
-            })
+            const { data } = await supabase
+              .from('project_members')
+              .select('project_id, projects(*)')
+              .eq('user_id', user.id)
+              .limit(1)
+              .single()
+            proj = (data as any)?.projects ?? null
           }
         }
 
+        if (!proj) {
+          // Không có project → về trang chọn dự án
+          window.location.href = '/projects'
+          return
+        }
+
         setProject(proj)
-        setProjectId(proj!.id)
+        setProjectId(proj.id)
 
         const [z, it, pr, gd] = await Promise.all([
           getZones(),
           getItemsWithSteps(),
-          getProgress(proj!.id),
-          getGanttDates(proj!.id),
+          getProgress(proj.id),
+          getGanttDates(proj.id),
         ])
 
         setZones(z)
         setItems(it as Item[])
 
-        // Build lookup maps
         const pm: Record<string, Progress> = {}
-        for (const p of pr) pm[p.step_id] = p as Progress
+        for (const p of pr) pm[(p as Progress).step_id] = p as Progress
         setProgressMap(pm)
 
         const gm: Record<string, GanttDate> = {}
-        for (const g of gd) gm[g.item_id] = g as GanttDate
+        for (const g of gd) gm[(g as GanttDate).item_id] = g as GanttDate
         setGanttMap(gm)
 
       } catch (err) {
         console.error('Load error:', err)
+        window.location.href = '/projects'
       } finally {
         setLoading(false)
       }
@@ -76,14 +80,14 @@ export function useAppData() {
     load()
   }, [])
 
-  // Realtime subscriptions
+  // Realtime
   useEffect(() => {
     if (!projectId) return
     const subP = subscribeProgress(projectId, (p) => {
-      setProgressMap(prev => ({ ...prev, [p.step_id]: p }))
+      setProgressMap(prev => ({ ...prev, [(p as Progress).step_id]: p as Progress }))
     })
     const subG = subscribeGantt(projectId, (g) => {
-      setGanttMap(prev => ({ ...prev, [g.item_id]: g }))
+      setGanttMap(prev => ({ ...prev, [(g as GanttDate).item_id]: g as GanttDate }))
     })
     return () => {
       supabase.removeChannel(subP)
@@ -91,9 +95,8 @@ export function useAppData() {
     }
   }, [projectId])
 
-  // Actions
   const toggleStep = useCallback(async (stepId: string, currentDone: boolean) => {
-    // Optimistic update
+    if (!projectId) return
     setProgressMap(prev => ({
       ...prev,
       [stepId]: {
@@ -109,6 +112,7 @@ export function useAppData() {
   }, [projectId])
 
   const toggleNA = useCallback(async (stepId: string, currentNA: boolean) => {
+    if (!projectId) return
     setProgressMap(prev => ({
       ...prev,
       [stepId]: {
@@ -123,6 +127,7 @@ export function useAppData() {
   }, [projectId])
 
   const updateGantt = useCallback(async (itemId: string, field: string, value: string) => {
+    if (!projectId) return
     setGanttMap(prev => ({
       ...prev,
       [itemId]: { ...prev[itemId], item_id: itemId, project_id: projectId, [field]: value || null } as GanttDate
@@ -132,6 +137,6 @@ export function useAppData() {
 
   return {
     project, zones, items, progressMap, ganttMap,
-    loading, toggleStep, toggleNA, updateGantt,
+    loading, projectId, toggleStep, toggleNA, updateGantt,
   }
 }
