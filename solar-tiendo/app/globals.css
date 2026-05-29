@@ -12,7 +12,7 @@
   --gold:    #F5A623;
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
   font-family: 'Be Vietnam Pro', system-ui, sans-serif;
@@ -27,7 +27,35 @@ body {
 .st-started { color: #60a5fa }
 .st-todo    { color: #8899bb }
 
+/* Date input picker style */
+input[type="date"] {
+  color-scheme: dark;
+  background: #0a0f1e;
+  border: 1px solid #ffffff20;
+  border-radius: 7px;
+  padding: 8px 12px;
+  color: #60a5fa;
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  width: 100%;
+}
+input[type="date"]:focus {
+  border-color: #4472C4;
+  box-shadow: 0 0 0 2px #4472C420;
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7) sepia(1) saturate(2) hue-rotate(190deg);
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px }
+::-webkit-scrollbar { width: 5px; height: 5px }
 ::-webkit-scrollbar-track { background: transparent }
 ::-webkit-scrollbar-thumb { background: #ffffff20; border-radius: 3px }
+
+/* Text overflow utilities */
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
