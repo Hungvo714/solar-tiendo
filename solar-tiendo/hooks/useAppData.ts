@@ -6,6 +6,12 @@ import {
   upsertProgress, upsertGantt, subscribeProgress, subscribeGantt
 } from '@/lib/queries'
 
+function getProjectIdFromUrl(): string {
+  if (typeof window === 'undefined') return ''
+  const params = new URLSearchParams(window.location.search)
+  return params.get('project') ?? ''
+}
+
 export function useAppData() {
   const [project,     setProject]     = useState<Project | null>(null)
   const [zones,       setZones]       = useState<Zone[]>([])
@@ -16,9 +22,7 @@ export function useAppData() {
   const [projectId,   setProjectId]   = useState<string>('')
 
   useEffect(() => {
-    // Lấy project ID từ URL params (?project=xxx)
-    const params = new URLSearchParams(window.location.search)
-    const pid = params.get('project')
+    const pid = getProjectIdFromUrl()
 
     async function load() {
       setLoading(true)
@@ -26,16 +30,14 @@ export function useAppData() {
         let proj: Project | null = null
 
         if (pid) {
-          // Dùng project ID từ URL
           const { data } = await supabase.from('projects').select('*').eq('id', pid).single()
           proj = data
         } else {
-          // Lấy project đầu tiên của user
           const { data: { user } } = await supabase.auth.getUser()
           if (user) {
             const { data } = await supabase
               .from('project_members')
-              .select('project_id, projects(*)')
+              .select('projects(*)')
               .eq('user_id', user.id)
               .limit(1)
               .single()
@@ -43,11 +45,7 @@ export function useAppData() {
           }
         }
 
-        if (!proj) {
-          // Không có project → về trang chọn dự án
-          window.location.href = '/projects'
-          return
-        }
+        if (!proj) { window.location.href = '/projects'; return }
 
         setProject(proj)
         setProjectId(proj.id)
@@ -71,7 +69,7 @@ export function useAppData() {
         setGanttMap(gm)
 
       } catch (err) {
-        console.error('Load error:', err)
+        console.error(err)
         window.location.href = '/projects'
       } finally {
         setLoading(false)
@@ -80,7 +78,6 @@ export function useAppData() {
     load()
   }, [])
 
-  // Realtime
   useEffect(() => {
     if (!projectId) return
     const subP = subscribeProgress(projectId, (p) => {
@@ -89,24 +86,16 @@ export function useAppData() {
     const subG = subscribeGantt(projectId, (g) => {
       setGanttMap(prev => ({ ...prev, [(g as GanttDate).item_id]: g as GanttDate }))
     })
-    return () => {
-      supabase.removeChannel(subP)
-      supabase.removeChannel(subG)
-    }
+    return () => { supabase.removeChannel(subP); supabase.removeChannel(subG) }
   }, [projectId])
 
   const toggleStep = useCallback(async (stepId: string, currentDone: boolean) => {
     if (!projectId) return
     setProgressMap(prev => ({
       ...prev,
-      [stepId]: {
-        ...prev[stepId],
-        step_id: stepId,
-        project_id: projectId,
-        is_done: !currentDone,
-        is_na: false,
-        done_at: !currentDone ? new Date().toISOString() : null,
-      } as Progress
+      [stepId]: { ...prev[stepId], step_id:stepId, project_id:projectId,
+        is_done:!currentDone, is_na:false,
+        done_at: !currentDone ? new Date().toISOString() : null } as Progress
     }))
     await upsertProgress(projectId, stepId, !currentDone)
   }, [projectId])
@@ -115,13 +104,8 @@ export function useAppData() {
     if (!projectId) return
     setProgressMap(prev => ({
       ...prev,
-      [stepId]: {
-        ...prev[stepId],
-        step_id: stepId,
-        project_id: projectId,
-        is_na: !currentNA,
-        is_done: false,
-      } as Progress
+      [stepId]: { ...prev[stepId], step_id:stepId, project_id:projectId,
+        is_na:!currentNA, is_done:false } as Progress
     }))
     await upsertProgress(projectId, stepId, false, !currentNA)
   }, [projectId])
@@ -130,13 +114,10 @@ export function useAppData() {
     if (!projectId) return
     setGanttMap(prev => ({
       ...prev,
-      [itemId]: { ...prev[itemId], item_id: itemId, project_id: projectId, [field]: value || null } as GanttDate
+      [itemId]: { ...prev[itemId], item_id:itemId, project_id:projectId, [field]:value||null } as GanttDate
     }))
     await upsertGantt(projectId, itemId, field, value)
   }, [projectId])
 
-  return {
-    project, zones, items, progressMap, ganttMap,
-    loading, projectId, toggleStep, toggleNA, updateGantt,
-  }
+  return { project, zones, items, progressMap, ganttMap, loading, projectId, toggleStep, toggleNA, updateGantt }
 }
