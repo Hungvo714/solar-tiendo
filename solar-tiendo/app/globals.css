@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg:      #0a0f1e;
+  --bg2:     #0d1b3e;
+  --bg3:     #1a2d5a;
+  --border:  #ffffff12;
+  --text:    #e8eaf0;
+  --muted:   #8899bb;
+  --gold:    #F5A623;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* Status colors */
+.st-done    { color: #4ade80 }
+.st-doing   { color: #fbbf24 }
+.st-started { color: #60a5fa }
+.st-todo    { color: #8899bb }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px }
+::-webkit-scrollbar-track { background: transparent }
+::-webkit-scrollbar-thumb { background: #ffffff20; border-radius: 3px }
