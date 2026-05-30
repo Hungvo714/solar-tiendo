@@ -152,9 +152,10 @@ export default function ProjectsPage() {
         padding:'14px 20px', display:'flex', alignItems:'center',
         justifyContent:'space-between', borderBottom:'1px solid #ffffff12' }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ background:'#F5A623', color:'#0d1b3e', fontWeight:700, fontSize:10,
-            width:36, height:36, borderRadius:8,
-            display:'flex', alignItems:'center', justifyContent:'center' }}>HTE</div>
+          <div style={{ width:36, height:36, borderRadius:8, overflow:'hidden',
+            background:'#fff', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <img src="/logo-hte.png" alt="HTE" style={{ width:36, height:27, objectFit:'cover' }}/>
+          </div>
           <div>
             <div style={{ fontSize:14, fontWeight:700, color:'#fff' }}>Tiến độ các dự án Solar</div>
             <div style={{ fontSize:10, color:'#8899bb' }}>Danh sách dự án</div>
