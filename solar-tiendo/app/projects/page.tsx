@@ -240,10 +240,12 @@ export default function ProjectsPage() {
             {/* Title + Create */}
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
               <div style={{ fontSize:15, fontWeight:700 }}>📋 Dự án ({projects.length})</div>
-              <button onClick={() => setShowForm(!showForm)}
-                style={{ ...S.btn('#F5A623','#0d1b3e'), padding:'9px 18px', fontSize:12, borderRadius:9 }}>
-                + Tạo dự án mới
-              </button>
+              {isAdmin && (
+                <button onClick={() => setShowForm(!showForm)}
+                  style={{ ...S.btn('#F5A623','#0d1b3e'), padding:'9px 18px', fontSize:12, borderRadius:9 }}>
+                  + Tạo dự án mới
+                </button>
+              )}
             </div>
 
             {/* Create Form */}
