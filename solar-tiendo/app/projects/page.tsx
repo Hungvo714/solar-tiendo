@@ -23,6 +23,7 @@ export default function ProjectsPage() {
   const [addingMember, setAddingMember] = useState(false)
   const [myUserId,  setMyUserId]  = useState<string|null>(null)
   const [isAdmin,   setIsAdmin]   = useState(false)
+  const [newUserInfo, setNewUserInfo] = useState<{email:string,pass:string}|null>(null)
   const [form, setForm] = useState({
     name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60'
   })
@@ -126,9 +127,11 @@ export default function ProjectsPage() {
         if (upsertErr) { alert('Lỗi: ' + upsertErr.message); return }
         alert(`✅ Đã thêm lại ${newEmail} vào dự án!\nRole: ${newRole}`)
       } else {
-        // User mới - tạo qua RPC để không mất session admin
-        const pass = newPass || (Math.random().toString(36).slice(-6) + Math.random().toString(36).slice(-6)).toUpperCase().slice(0,4) + 
-                     Math.random().toString(36).slice(-4) + '!2'
+        // Tạo mật khẩu dễ nhớ: 3 từ + số
+        const words = ['Solar','Nang','Luong','Cong','Trinh','Dien','Mai','Dat','An','Toan']
+        const w1 = words[Math.floor(Math.random()*words.length)]
+        const w2 = Math.floor(Math.random()*9000)+1000
+        const pass = newPass || `${w1}${w2}!`
         
         // Lưu session admin hiện tại
         const { data: { session: adminSession } } = await supabase.auth.getSession()
@@ -151,12 +154,8 @@ export default function ProjectsPage() {
           project_id: pid, user_id: userId, role: newRole
         }, { onConflict: 'project_id,user_id' })
         
-        // Mật khẩu dễ nhớ hơn
         const displayPass = newPass || pass
-        // Copy vào clipboard
-        try { await navigator.clipboard.writeText(displayPass) } catch(e) {}
-        
-        alert(`✅ Đã tạo tài khoản mới!\n\nEmail: ${newEmail}\nMật khẩu: ${displayPass}\nRole: ${newRole}\n\n📋 Mật khẩu đã được copy vào clipboard!\n💡 Gửi thông tin này cho thành viên.`)
+        setNewUserInfo({ email: newEmail, pass: displayPass })
       }
       setNewEmail(''); setNewPass(''); setNewRole('editor')
       loadMembers(pid)
@@ -208,6 +207,53 @@ export default function ProjectsPage() {
   }
 
   return (
+    <>
+    {/* Popup thông tin tài khoản mới */}
+    {newUserInfo && (
+      <div style={{ position:'fixed', inset:0, background:'#000000aa',
+        display:'flex', alignItems:'center', justifyContent:'center', zIndex:999 }}>
+        <div style={{ background:'#0d1b3e', border:'1px solid #4ade80',
+          borderRadius:14, padding:24, maxWidth:360, width:'90%' }}>
+          <div style={{ fontSize:14, fontWeight:700, color:'#4ade80', marginBottom:16 }}>
+            ✅ Tạo tài khoản thành công!
+          </div>
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:10, color:'#8899bb', marginBottom:4 }}>Email</div>
+            <div style={{ background:'#0a0f1e', borderRadius:7, padding:'8px 12px',
+              fontSize:12, color:'#e8eaf0', fontFamily:'monospace' }}>
+              {newUserInfo.email}
+            </div>
+          </div>
+          <div style={{ marginBottom:16 }}>
+            <div style={{ fontSize:10, color:'#8899bb', marginBottom:4 }}>Mật khẩu</div>
+            <div style={{ background:'#0a0f1e', borderRadius:7, padding:'8px 12px',
+              fontSize:16, color:'#F5A623', fontFamily:'monospace', fontWeight:700,
+              display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <span>{newUserInfo.pass}</span>
+              <button onClick={() => {
+                navigator.clipboard.writeText(newUserInfo.pass)
+                alert('✅ Đã copy mật khẩu!')
+              }} style={{ background:'#F5A623', color:'#0d1b3e', border:'none',
+                borderRadius:6, padding:'4px 10px', fontSize:10,
+                fontWeight:700, cursor:'pointer' }}>
+                Copy
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize:10, color:'#8899bb', marginBottom:16,
+            background:'#ffffff08', borderRadius:7, padding:'8px 12px' }}>
+            💡 Gửi email + mật khẩu này cho thành viên để họ đăng nhập.
+            Họ có thể đổi mật khẩu sau khi vào app.
+          </div>
+          <button onClick={() => setNewUserInfo(null)}
+            style={{ width:'100%', padding:10, background:'#276221',
+              border:'none', borderRadius:9, color:'#fff',
+              fontFamily:'inherit', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+            Đã hiểu, đóng lại
+          </button>
+        </div>
+      </div>
+    )}
     <div style={{ minHeight:'100vh', background:'#0a0f1e', color:'#e8eaf0',
       fontFamily:'system-ui,sans-serif', fontSize:13 }}>
 
@@ -425,5 +471,6 @@ export default function ProjectsPage() {
         )}
       </main>
     </div>
+  </>
   )
 }
