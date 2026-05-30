@@ -88,10 +88,12 @@ export default function GanttPage() {
         justifyContent:'space-between', borderBottom:'1px solid #ffffff12',
         position:'sticky', top:0, zIndex:50 }}>
         <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
-          <div style={{ background:'#F5A623', color:'#0d1b3e', fontWeight:700,
-            fontSize:10, width:36, height:36, borderRadius:8, flexShrink:0,
-            display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}
-            onClick={() => window.location.href='/projects'}>HTE</div>
+          <div style={{ width:36, height:36, borderRadius:8, flexShrink:0,
+            overflow:'hidden', cursor:'pointer', background:'#fff',
+            display:'flex', alignItems:'center', justifyContent:'center' }}
+            onClick={() => window.location.href='/projects'}>
+            <img src="/logo-hte.png" alt="HTE" style={{ width:36, height:27, objectFit:'cover' }}/>
+          </div>
           <div style={{ minWidth:0 }}>
             <div style={{ fontSize:13, fontWeight:700, color:'#fff',
               overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{project?.name}</div>
