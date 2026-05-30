@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, elapsedDays } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
@@ -20,12 +20,10 @@ export default function GanttPage() {
   const [ganttMap,    setGanttMap]    = useState<Record<string, GanttDate>>({})
   const [loading,     setLoading]     = useState(true)
   const [projectId,   setProjectId]   = useState('')
-  const [nameColW,    setNameColW]    = useState(220)
-  const [dragging,    setDragging]    = useState(false)
-  const dragStartX = useRef(0)
-  const dragStartW = useRef(220)
+  const [isMobile,    setIsMobile]    = useState(false)
 
   useEffect(() => {
+    setIsMobile(window.innerWidth < 768)
     const pid = new URLSearchParams(window.location.search).get('project') || ''
     if (!pid) { window.location.href = '/projects'; return }
     setProjectId(pid)
@@ -47,33 +45,12 @@ export default function GanttPage() {
     load()
   }, [])
 
-  // Drag to resize column
-  useEffect(() => {
-    function onMove(e: MouseEvent) {
-      if (!dragging) return
-      const delta = e.clientX - dragStartX.current
-      setNameColW(Math.max(120, Math.min(400, dragStartW.current + delta)))
-    }
-    function onUp() { setDragging(false) }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-  }, [dragging])
-
-  function startDrag(e: React.MouseEvent) {
-    e.preventDefault()
-    dragStartX.current = e.clientX
-    dragStartW.current = nameColW
-    setDragging(true)
-  }
-
   function navigate(path: string) {
     window.location.href = `${path}?project=${projectId}`
   }
 
-  function barStyle(g: GanttDate | undefined, startField: string, endField: string) {
-    const s = (g as any)?.[startField]
-    const e = (g as any)?.[endField]
+  function barPos(g: GanttDate | undefined, sf: string, ef: string) {
+    const s = (g as any)?.[sf], e = (g as any)?.[ef]
     if (!s || !e) return null
     const ps   = new Date(startDate).getTime()
     const left = Math.max(0, Math.round((new Date(s).getTime() - ps) / 86400000))
@@ -96,10 +73,14 @@ export default function GanttPage() {
   const endDate   = new Date(new Date(startDate).getTime() + total * 86400000)
     .toLocaleDateString('vi-VN')
 
+  // Cột tên: 140px mobile, 200px desktop
+  const NAME_W = isMobile ? 130 : 200
+  // Timeline tối thiểu 400px để cuộn được
+  const TIMELINE_W = isMobile ? 600 : undefined
+
   return (
     <div style={{ display:'flex', flexDirection:'column', minHeight:'100vh',
-      background:'#0a0f1e', color:'#e8eaf0', fontFamily:'system-ui,sans-serif', fontSize:13,
-      userSelect: dragging ? 'none' : 'auto' }}>
+      background:'#0a0f1e', color:'#e8eaf0', fontFamily:'system-ui,sans-serif', fontSize:13 }}>
 
       {/* HEADER */}
       <header style={{ background:'linear-gradient(135deg,#0d1b3e,#1a2d5a)',
@@ -135,173 +116,155 @@ export default function GanttPage() {
         ))}
       </nav>
 
-      <main style={{ flex:1, overflowY:'auto', overflowX:'auto', padding:12 }}>
-        {/* Info bar */}
+      <main style={{ flex:1, padding:12, overflowY:'auto' }}>
+        {/* Info */}
         <div style={{ display:'flex', justifyContent:'space-between', fontSize:10,
           color:'#8899bb', padding:'7px 10px', background:'#ffffff08',
           borderRadius:7, marginBottom:8, flexWrap:'wrap', gap:4 }}>
-          <span>📅 {new Date(startDate).toLocaleDateString('vi-VN')} → {endDate} ({total} ngày)</span>
-          <span style={{ color:'#F5A623' }}>⚡ Hôm nay — Ngày {el}/{total}</span>
+          <span>📅 {new Date(startDate).toLocaleDateString('vi-VN')} → {endDate}</span>
+          <span style={{ color:'#F5A623' }}>⚡ Ngày {el}/{total}</span>
         </div>
 
-        {/* Legend + hint */}
-        <div style={{ display:'flex', gap:16, fontSize:10, color:'#8899bb',
-          marginBottom:10, flexWrap:'wrap', alignItems:'center' }}>
+        {/* Legend */}
+        <div style={{ display:'flex', gap:12, fontSize:10, color:'#8899bb', marginBottom:8, flexWrap:'wrap' }}>
           <span><span style={{ color:'#4472C4' }}>██</span> Kế hoạch</span>
           <span><span style={{ color:'#70AD47' }}>██</span> Thực tế</span>
           <span><span style={{ color:'#FF4444' }}>██</span> Trễ</span>
-          <span><span style={{ color:'#F5A623' }}>│</span> Hôm nay</span>
-          <span style={{ color:'#60a5fa', marginLeft:'auto' }}>
-            ↔ Kéo thanh phân cách để mở rộng/thu hẹp cột tên
-          </span>
+          {isMobile && <span style={{ color:'#60a5fa' }}>← Vuốt ngang để xem timeline →</span>}
         </div>
 
-        {/* Note về nguồn ngày */}
+        {/* Note */}
         <div style={{ fontSize:10, color:'#8899bb', padding:'6px 10px',
           background:'#185FA510', border:'1px solid #185FA530', borderRadius:7, marginBottom:10 }}>
-          💡 Ngày kế hoạch & thực tế được nhập tại tab <strong style={{ color:'#60a5fa' }}>Tiến độ</strong> — Gantt tự động hiển thị
+          💡 Nhập ngày tại tab <strong style={{ color:'#60a5fa' }}>Tiến độ</strong> — Gantt tự động hiển thị
         </div>
 
-        {/* Gantt table */}
-        <div style={{ minWidth:500 }}>
-          {/* Header ruler */}
-          <div style={{ display:'flex', marginBottom:4 }}>
-            {/* Name column header */}
-            <div style={{ width:nameColW, flexShrink:0, fontSize:10, fontWeight:600,
-              color:'#8899bb', padding:'5px 8px', background:'#1a2d5a',
-              borderRadius:'6px 0 0 6px', display:'flex', alignItems:'center',
-              justifyContent:'space-between' }}>
-              <span>Hạng mục</span>
-              <span style={{ color:'#ffffff30', fontSize:9 }}>STT · %</span>
+        {/* Gantt — layout 2 phần: tên cố định + timeline cuộn */}
+        <div style={{ display:'flex', border:'1px solid #ffffff10', borderRadius:8, overflow:'hidden' }}>
+
+          {/* Cột tên — cố định, không cuộn */}
+          <div style={{ width:NAME_W, flexShrink:0, borderRight:'2px solid #2E75B6' }}>
+            {/* Header */}
+            <div style={{ padding:'6px 8px', background:'#1a2d5a',
+              fontSize:10, fontWeight:600, color:'#8899bb', height:32,
+              display:'flex', alignItems:'center' }}>
+              Hạng mục
             </div>
-
-            {/* Drag handle */}
-            <div onMouseDown={startDrag}
-              style={{ width:6, flexShrink:0, background:'#2E75B6', cursor:'col-resize',
-                display:'flex', alignItems:'center', justifyContent:'center',
-                userSelect:'none' as any }}>
-              <div style={{ width:2, height:20, background:'#60a5fa', borderRadius:1 }}/>
-            </div>
-
-            {/* Timeline ruler */}
-            <div style={{ flex:1, position:'relative', height:28,
-              background:'#1a2d5a', borderRadius:'0 6px 6px 0', overflow:'hidden' }}>
-              {Array.from({length:Math.floor(total/5)+1}, (_,i) => {
-                const day = i * 5 + 1
-                if (day > total) return null
-                return (
-                  <div key={i} style={{
-                    position:'absolute', fontSize:8, color:'#8899bb',
-                    left:`${((i*5)/total)*100}%`,
-                    transform:'translateX(-50%)', bottom:4, whiteSpace:'nowrap'
-                  }}>N{day}</div>
-                )
-              })}
-              <div style={{ position:'absolute', top:0, bottom:0, width:2,
-                background:'#F5A623', left:`${todayPct}%`, opacity:0.9 }}/>
-            </div>
-          </div>
-
-          {/* Item rows */}
-          {items.map(item => {
-            const pct  = itemPct(item, progressMap)
-            const z    = zones.find(zn => zn.id === item.zone_id)
-            const g    = ganttMap[item.id]
-            const plan = barStyle(g, 'plan_start', 'plan_end')
-            const act  = barStyle(g, 'actual_start', 'actual_end')
-            const isLate = g?.plan_end && !g?.actual_end
-              && new Date(g.plan_end) < new Date() && pct < 1
-
-            return (
-              <div key={item.id} style={{ display:'flex', marginBottom:3, alignItems:'stretch' }}>
-                {/* Name cell */}
-                <div style={{ width:nameColW, flexShrink:0, display:'flex',
-                  alignItems:'flex-start', gap:5, padding:'5px 8px',
-                  background:'#0d1b3e', borderRadius:'6px 0 0 6px',
-                  border:'1px solid #ffffff08', borderRight:'none', minHeight:32 }}>
-                  <div style={{ width:16, height:16, borderRadius:3, flexShrink:0, marginTop:1,
+            {/* Rows */}
+            {items.map(item => {
+              const pct = itemPct(item, progressMap)
+              const z   = zones.find(zn => zn.id === item.zone_id)
+              const g   = ganttMap[item.id]
+              return (
+                <div key={item.id} style={{ padding:'5px 8px', borderTop:'1px solid #ffffff08',
+                  background:'#0d1b3e', minHeight:40, display:'flex',
+                  alignItems:'flex-start', gap:5 }}>
+                  <div style={{ width:14, height:14, borderRadius:3, flexShrink:0, marginTop:2,
                     background: z ? z.light+'33' : '#1a2d5a',
                     display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    {z && <i className={`ti ${z.icon}`} style={{ fontSize:10, color:z.color }}/>}
+                    {z && <i className={`ti ${z.icon}`} style={{ fontSize:9, color:z.color }}/>}
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:11, color:'#c0d0ef',
-                      wordBreak:'break-word' as any, lineHeight:1.4 }}>
-                      <span style={{ color:'#8899bb', fontSize:9, marginRight:3 }}>{item.stt}.</span>
+                    <div style={{ fontSize:10, color:'#c0d0ef', lineHeight:1.4,
+                      wordBreak:'break-word' as any }}>
+                      <span style={{ color:'#8899bb', fontSize:9 }}>{item.stt}. </span>
                       {item.name}
                     </div>
-                    <div style={{ fontSize:9, color: pct>=1?'#4ade80':pct>0?'#fbbf24':'#8899bb',
-                      marginTop:2, fontFamily:'monospace' }}>
+                    <div style={{ fontSize:9, marginTop:1,
+                      color: pct>=1?'#4ade80':pct>0?'#fbbf24':'#8899bb',
+                      fontFamily:'monospace' }}>
                       {Math.round(pct*100)}%
                       {g?.plan_start && <span style={{ color:'#8899bb', marginLeft:4 }}>
                         {new Date(g.plan_start).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}
-                        {g?.plan_end && ' → ' + new Date(g.plan_end).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}
+                        {g?.plan_end && '→'+new Date(g.plan_end).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}
                       </span>}
                     </div>
                   </div>
                 </div>
+              )
+            })}
+          </div>
 
-                {/* Drag handle */}
-                <div onMouseDown={startDrag}
-                  style={{ width:6, flexShrink:0, background:'#1a2d5a',
-                    cursor:'col-resize', borderTop:'1px solid #ffffff08',
-                    borderBottom:'1px solid #ffffff08' }}/>
-
-                {/* Bar track */}
-                <div style={{ flex:1, background:'#0d1b3e', border:'1px solid #ffffff08',
-                  borderLeft:'none', borderRadius:'0 6px 6px 0',
-                  position:'relative', overflow:'visible', minHeight:32 }}>
-
-                  {/* Plan bar */}
-                  {plan && (
-                    <div style={{
-                      position:'absolute', top:'50%', transform:'translateY(-50%)',
-                      height:12, borderRadius:3,
-                      left:`${plan.left}%`, width:`${plan.width}%`,
-                      background: isLate ? '#FF4444' : '#4472C4', opacity:0.85,
-                    }}>
-                      {/* Progress fill */}
-                      {pct > 0 && (
-                        <div style={{
-                          position:'absolute', inset:0, width:`${pct*100}%`,
-                          background: z?.color ?? '#F5A623',
-                          borderRadius:3, opacity:0.9
-                        }}/>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Actual bar */}
-                  {act && (
-                    <div style={{
-                      position:'absolute', top:'50%', transform:'translateY(-52%)',
-                      height:6, borderRadius:2,
-                      left:`${act.left}%`, width:`${act.width}%`,
-                      background:'#70AD47', opacity:0.9,
-                    }}/>
-                  )}
-
-                  {/* No date hint */}
-                  {!plan && (
-                    <div style={{
-                      position:'absolute', top:'50%', left:8,
-                      transform:'translateY(-50%)',
-                      fontSize:9, color:'#ffffff18', whiteSpace:'nowrap'
-                    }}>
-                      Nhập ngày tại tab Tiến độ
-                    </div>
-                  )}
-
-                  {/* Today line */}
-                  <div style={{
-                    position:'absolute', top:0, bottom:0, width:2,
-                    background:'#F5A623', left:`${todayPct}%`,
-                    opacity:0.7, zIndex:5
-                  }}/>
-                </div>
+          {/* Timeline — cuộn ngang */}
+          <div style={{ flex:1, overflowX:'auto', WebkitOverflowScrolling:'touch' as any }}>
+            <div style={{ minWidth:TIMELINE_W, position:'relative' }}>
+              {/* Ruler */}
+              <div style={{ height:32, background:'#1a2d5a', position:'relative', overflow:'hidden' }}>
+                {Array.from({length:Math.floor(total/5)+1}, (_,i) => {
+                  const day = i*5+1
+                  if (day > total) return null
+                  return (
+                    <div key={i} style={{
+                      position:'absolute', fontSize:8, color:'#8899bb',
+                      left:`${((i*5)/total)*100}%`, bottom:4,
+                      transform:'translateX(-50%)', whiteSpace:'nowrap'
+                    }}>N{day}</div>
+                  )
+                })}
+                <div style={{ position:'absolute', top:0, bottom:0, width:2,
+                  background:'#F5A623', left:`${todayPct}%`, opacity:0.9 }}/>
               </div>
-            )
-          })}
+
+              {/* Bar rows */}
+              {items.map(item => {
+                const pct  = itemPct(item, progressMap)
+                const z    = zones.find(zn => zn.id === item.zone_id)
+                const g    = ganttMap[item.id]
+                const plan = barPos(g, 'plan_start', 'plan_end')
+                const act  = barPos(g, 'actual_start', 'actual_end')
+                const isLate = g?.plan_end && !g?.actual_end
+                  && new Date(g.plan_end) < new Date() && pct < 1
+
+                return (
+                  <div key={item.id} style={{ borderTop:'1px solid #ffffff08',
+                    background:'#0d1b3e', minHeight:40, position:'relative' }}>
+
+                    {/* Plan bar */}
+                    {plan && (
+                      <div style={{
+                        position:'absolute', top:'50%', transform:'translateY(-50%)',
+                        height:14, borderRadius:3,
+                        left:`${plan.left}%`, width:`${plan.width}%`,
+                        background: isLate ? '#FF4444' : '#4472C4', opacity:0.85,
+                      }}>
+                        {pct > 0 && (
+                          <div style={{
+                            position:'absolute', inset:0, width:`${pct*100}%`,
+                            background: z?.color ?? '#F5A623', borderRadius:3, opacity:0.9
+                          }}/>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Actual bar */}
+                    {act && (
+                      <div style={{
+                        position:'absolute', top:'50%', transform:'translateY(-60%)',
+                        height:6, borderRadius:2,
+                        left:`${act.left}%`, width:`${act.width}%`,
+                        background:'#70AD47', opacity:0.9,
+                      }}/>
+                    )}
+
+                    {/* No date */}
+                    {!plan && (
+                      <div style={{
+                        position:'absolute', top:'50%', left:8,
+                        transform:'translateY(-50%)',
+                        fontSize:9, color:'#ffffff15', whiteSpace:'nowrap'
+                      }}>Nhập ngày tại Tiến độ</div>
+                    )}
+
+                    {/* Today line */}
+                    <div style={{
+                      position:'absolute', top:0, bottom:0, width:2,
+                      background:'#F5A623', left:`${todayPct}%`, opacity:0.6
+                    }}/>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       </main>
     </div>
