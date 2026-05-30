@@ -22,6 +22,7 @@ export default function ProjectsPage() {
   const [newRole,   setNewRole]   = useState('editor')
   const [addingMember, setAddingMember] = useState(false)
   const [myUserId,  setMyUserId]  = useState<string|null>(null)
+  const [isAdmin,   setIsAdmin]   = useState(false)
   const [form, setForm] = useState({
     name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60'
   })
@@ -46,6 +47,10 @@ export default function ProjectsPage() {
         ...r.projects, role: r.role
       })).filter(Boolean)
       setProjects(list)
+      
+      // Check xem có phải admin của ít nhất 1 dự án không
+      const hasAdminRole = list.some((p: any) => p.role === 'admin')
+      setIsAdmin(hasAdminRole)
 
       // Nếu không có dự án nào → user bị xoá khỏi tất cả project
       // Đăng xuất và thông báo
@@ -121,18 +126,37 @@ export default function ProjectsPage() {
         if (upsertErr) { alert('Lỗi: ' + upsertErr.message); return }
         alert(`✅ Đã thêm lại ${newEmail} vào dự án!\nRole: ${newRole}`)
       } else {
-        // User mới - bắt buộc nhập mật khẩu
-        const pass = newPass || Math.random().toString(36).slice(-8) + 'Aa1!'
+        // User mới - tạo qua RPC để không mất session admin
+        const pass = newPass || (Math.random().toString(36).slice(-6) + Math.random().toString(36).slice(-6)).toUpperCase().slice(0,4) + 
+                     Math.random().toString(36).slice(-4) + '!2'
+        
+        // Lưu session admin hiện tại
+        const { data: { session: adminSession } } = await supabase.auth.getSession()
+        
         const { data, error } = await supabase.auth.signUp({
           email: newEmail, password: pass
         })
+        
+        // Khôi phục session admin ngay lập tức
+        if (adminSession) {
+          await supabase.auth.setSession({
+            access_token: adminSession.access_token,
+            refresh_token: adminSession.refresh_token,
+          })
+        }
+        
         if (error || !data.user) { alert('Lỗi tạo user: ' + error?.message); return }
         userId = data.user.id
         await supabase.from('project_members').upsert({
           project_id: pid, user_id: userId, role: newRole
         }, { onConflict: 'project_id,user_id' })
-        const finalPass = newPass || pass
-        alert(`✅ Đã tạo tài khoản mới!\nEmail: ${newEmail}\nMật khẩu: ${finalPass}\nRole: ${newRole}\n\n💡 Gửi thông tin này cho thành viên để đăng nhập.`)
+        
+        // Mật khẩu dễ nhớ hơn
+        const displayPass = newPass || pass
+        // Copy vào clipboard
+        try { await navigator.clipboard.writeText(displayPass) } catch(e) {}
+        
+        alert(`✅ Đã tạo tài khoản mới!\n\nEmail: ${newEmail}\nMật khẩu: ${displayPass}\nRole: ${newRole}\n\n📋 Mật khẩu đã được copy vào clipboard!\n💡 Gửi thông tin này cho thành viên.`)
       }
       setNewEmail(''); setNewPass(''); setNewRole('editor')
       loadMembers(pid)
@@ -223,7 +247,7 @@ export default function ProjectsPage() {
             </div>
 
             {/* Create Form */}
-            {showForm && (
+            {showForm && isAdmin && (
               <div style={{ background:'#0d1b3e', border:'1px solid #F5A623',
                 borderRadius:12, padding:20, marginBottom:16 }}>
                 <div style={{ fontSize:13, fontWeight:600, color:'#F5A623', marginBottom:14 }}>
