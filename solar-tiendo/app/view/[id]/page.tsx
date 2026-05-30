@@ -157,13 +157,14 @@ export default function PublicViewPage() {
           📋 Tiến độ từng hạng mục
         </div>
         <div style={{ borderRadius:8, overflow:'hidden', border:'1px solid #ffffff10' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'28px 1fr 65px 60px 60px 70px',
+          <div style={{ display:'grid', gridTemplateColumns:'28px 1fr 65px 55px 55px 55px 80px',
             padding:'7px 12px', background:'#1a2d5a',
             fontSize:9, fontWeight:600, color:'#8899bb', gap:6 }}>
             <span>STT</span><span>Hạng mục</span><span>Khu vực</span>
             <span style={{ textAlign:'center' }}>%</span>
             <span style={{ textAlign:'center' }}>BD KH</span>
             <span style={{ textAlign:'center' }}>HT KH</span>
+            <span style={{ textAlign:'center' }}>Trạng thái</span>
           </div>
           {items.map((it, idx) => {
             const pct = itemPct(it, progressMap)
@@ -172,7 +173,7 @@ export default function PublicViewPage() {
             const st  = statusOf(pct)
             return (
               <div key={it.id} style={{ display:'grid',
-                gridTemplateColumns:'28px 1fr 65px 60px 60px 70px',
+                gridTemplateColumns:'28px 1fr 65px 55px 55px 55px 80px',
                 padding:'7px 12px', gap:6, alignItems:'center',
                 background: idx%2===0 ? (z ? z.light+'18' : '#ffffff08') : 'transparent',
                 borderTop:'1px solid #ffffff08' }}>
@@ -184,6 +185,8 @@ export default function PublicViewPage() {
                   color: pct>=1?'#4ade80':pct>0?'#fbbf24':'#8899bb' }}>{fp(pct)}</span>
                 <span style={{ fontSize:10, color:'#8899bb', textAlign:'center' }}>{fmtD(g?.plan_start)}</span>
                 <span style={{ fontSize:10, color:'#60a5fa', textAlign:'center' }}>{fmtD(g?.plan_end)}</span>
+                <span style={{ fontSize:9, textAlign:'center',
+                  color: pct>=1?'#4ade80':pct>0?'#fbbf24':'#8899bb' }}>{st.l}</span>
               </div>
             )
           })}
