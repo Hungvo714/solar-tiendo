@@ -46,6 +46,14 @@ export default function ProjectsPage() {
         ...r.projects, role: r.role
       })).filter(Boolean)
       setProjects(list)
+
+      // Nếu không có dự án nào → user bị xoá khỏi tất cả project
+      // Đăng xuất và thông báo
+      if (list.length === 0) {
+        await supabase.auth.signOut()
+        window.location.href = '/login?msg=no-access'
+        return
+      }
     } catch(e) {
       console.error(e)
     } finally {
@@ -114,9 +122,16 @@ export default function ProjectsPage() {
   }
 
   async function removeMember(pid: string, uid: string) {
-    if (!confirm('Xoá thành viên này?')) return
+    if (!confirm('Xoá thành viên này khỏi dự án này?\n\nNếu họ không còn dự án nào, họ sẽ bị đăng xuất khi vào app.')) return
     await supabase.from('project_members').delete().eq('project_id', pid).eq('user_id', uid)
     loadMembers(pid)
+  }
+
+  async function removeUserAllProjects(uid: string, email?: string) {
+    if (!confirm(`Xoá user này khỏi TẤT CẢ dự án?\n\nHọ sẽ không thể vào app nữa.`)) return
+    await supabase.from('project_members').delete().eq('user_id', uid)
+    alert('✅ Đã xoá user khỏi tất cả dự án!')
+    loadProjects()
   }
 
   function copyLink(id: string) {
