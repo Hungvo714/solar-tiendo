@@ -176,9 +176,9 @@ export default function PublicViewPage() {
         </div>
         <div style={{ borderRadius:8, border:'1px solid #ffffff10',
           overflowX:'auto', WebkitOverflowScrolling:'touch' as any }}>
-          <div style={{ minWidth:480 }}>
+          <div style={{ minWidth:520 }}>
             {/* Header */}
-            <div style={{ display:'grid', gridTemplateColumns:'32px 1fr 60px 44px 52px 52px 75px',
+            <div style={{ display:'grid', gridTemplateColumns:'28px 2fr 55px 40px 48px 48px 70px',
               padding:'7px 10px', background:'#1a2d5a',
               fontSize:9, fontWeight:600, color:'#8899bb', gap:4 }}>
               <span>#</span>
@@ -197,13 +197,13 @@ export default function PublicViewPage() {
               const st  = statusOf(pct)
               return (
                 <div key={it.id} style={{ display:'grid',
-                  gridTemplateColumns:'32px 1fr 60px 44px 52px 52px 75px',
-                  padding:'6px 10px', gap:4, alignItems:'center',
+                  gridTemplateColumns:'28px 2fr 55px 40px 48px 48px 70px',
+                  padding:'6px 10px', gap:4, alignItems:'start',
                   background: idx%2===0 ? (z ? z.light+'18':'#ffffff08') : 'transparent',
                   borderTop:'1px solid #ffffff08' }}>
                   <span style={{ fontSize:10, fontWeight:700, color:'#8899bb' }}>{it.stt}</span>
                   <span style={{ fontSize:11, color:'#c8d8f0',
-                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.name}</span>
+                    wordBreak:'break-word' as any, lineHeight:1.4 }}>{it.name}</span>
                   <span style={{ fontSize:9, color:z?.color,
                     overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{z?.label}</span>
                   <span style={{ fontSize:10, fontFamily:'monospace', textAlign:'center', fontWeight:700,
@@ -216,7 +216,7 @@ export default function PublicViewPage() {
               )
             })}
             {/* Tổng */}
-            <div style={{ display:'grid', gridTemplateColumns:'32px 1fr 60px 44px 52px 52px 75px',
+            <div style={{ display:'grid', gridTemplateColumns:'28px 2fr 55px 40px 48px 48px 70px',
               padding:'8px 10px', gap:4, alignItems:'center',
               background:'#1a2d5a', borderTop:'2px solid #4472C4' }}>
               <span/>
