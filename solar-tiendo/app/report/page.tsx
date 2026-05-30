@@ -86,10 +86,15 @@ export default function ReportPage() {
     const label = `Tuần ${parseInt(weekNum)+1} (${nextMonStr} - ${nextSunStr})`
     const list = items.filter(it => {
       const g = ganttMap[it.id]
+      // Ưu tiên ngày thực tế, sau đó kế hoạch
       const startDate = g?.actual_start || g?.plan_start
+      const endDate   = g?.actual_end   || g?.plan_end
       if (!startDate) return false
-      const d = new Date(startDate)
-      return d >= nextMon && d <= nextSun
+      const s = new Date(startDate)
+      const e = endDate ? new Date(endDate) : s
+      // Hiển thị nếu công việc đang diễn ra hoặc bắt đầu trong tuần tới
+      // Điều kiện: start <= chủ nhật tuần tới VÀ end >= thứ 2 tuần tới
+      return s <= nextSun && e >= nextMon
     })
     return { list, label }
   }
