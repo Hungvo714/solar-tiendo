@@ -110,22 +110,28 @@ export default function ProjectsPage() {
     setAddingMember(true)
     try {
       // Bước 1: Tìm user đã tồn tại qua email
-      const { data: existingUsers } = await supabase
+      const { data: existingUsers, error: searchErr } = await supabase
         .from('auth_users_view')
         .select('id, email')
-        .eq('email', newEmail)
+        .eq('email', newEmail.trim().toLowerCase())
         .limit(1)
 
       let userId: string | null = null
 
-      if (existingUsers && existingUsers.length > 0) {
-        // User đã tồn tại - add lại vào dự án
-        userId = existingUsers[0].id
+      // User tìm thấy HOẶC lỗi "already registered" → user đã tồn tại
+      const userExists = (existingUsers && existingUsers.length > 0)
+
+      if (userExists) {
+        // User đã tồn tại - add vào dự án
+        userId = existingUsers![0].id
         const { error: upsertErr } = await supabase.from('project_members').upsert({
           project_id: pid, user_id: userId, role: newRole
         }, { onConflict: 'project_id,user_id' })
         if (upsertErr) { alert('Lỗi: ' + upsertErr.message); return }
-        alert(`✅ Đã thêm lại ${newEmail} vào dự án!\nRole: ${newRole}`)
+        alert(`✅ Đã thêm ${newEmail} vào dự án!\nRole: ${newRole}`)
+        setNewEmail(''); setNewPass(''); setNewRole('editor')
+        loadMembers(pid)
+        return
       } else {
         // Tạo mật khẩu dễ nhớ: 3 từ + số
         const words = ['Solar','Nang','Luong','Cong','Trinh','Dien','Mai','Dat','An','Toan']
