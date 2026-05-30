@@ -156,8 +156,8 @@ export default function ProjectsPage() {
             width:36, height:36, borderRadius:8,
             display:'flex', alignItems:'center', justifyContent:'center' }}>HTE</div>
           <div>
-            <div style={{ fontSize:14, fontWeight:700, color:'#fff' }}>Solar Tiến Độ</div>
-            <div style={{ fontSize:10, color:'#8899bb' }}>Quản lý dự án</div>
+            <div style={{ fontSize:14, fontWeight:700, color:'#fff' }}>Tiến độ các dự án Solar</div>
+            <div style={{ fontSize:10, color:'#8899bb' }}>Danh sách dự án</div>
           </div>
         </div>
         <button onClick={() => supabase.auth.signOut().then(() => window.location.href='/login')}
