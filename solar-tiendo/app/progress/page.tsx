@@ -21,6 +21,7 @@ export default function ProgressPage() {
   const [filterZone,  setFilterZone]  = useState('all')
   const [search,      setSearch]      = useState('')
   const [expanded,    setExpanded]    = useState<Record<string, boolean>>({})
+  const [isViewer,    setIsViewer]    = useState(false)
 
   useEffect(() => {
     const pid = new URLSearchParams(window.location.search).get('project') || ''
@@ -28,14 +29,18 @@ export default function ProgressPage() {
     setProjectId(pid)
 
     async function load() {
-      const [{ data: proj }, z, it, pr, gd] = await Promise.all([
+      const { data: { user } } = await supabase.auth.getUser()
+      const [{ data: proj }, z, it, pr, gd, { data: memberData }] = await Promise.all([
         supabase.from('projects').select('*').eq('id', pid).single(),
         getZones(),
         getItemsWithSteps(),
         getProgress(pid),
         getGanttDates(pid),
+        supabase.from('project_members').select('role').eq('project_id', pid).eq('user_id', user?.id ?? '').single(),
       ])
       if (!proj) { window.location.href = '/projects'; return }
+      const role = (memberData as any)?.role ?? 'viewer'
+      setIsViewer(role === 'viewer')
       setProject(proj)
       setZones(z)
       setItems(it as Item[])
@@ -146,7 +151,15 @@ export default function ProgressPage() {
       </nav>
 
       <main style={{ flex:1, overflowY:'auto', padding:12 }}>
-        {/* Filter */}
+        {/* Viewer badge */}
+        {isViewer && (
+          <div style={{ background:'#185FA510', border:'1px solid #185FA530',
+            borderRadius:7, padding:'6px 12px', fontSize:10, color:'#60a5fa',
+            marginBottom:8, textAlign:'center' }}>
+            🔒 Bạn đang ở chế độ xem — không thể chỉnh sửa tiến độ
+          </div>
+        )}
+      {/* Filter */}
         <div style={{ marginBottom:10 }}>
           <div style={{ display:'flex', alignItems:'center', gap:7,
             background:'#0d1b3e', border:'1px solid #ffffff15', borderRadius:7,
@@ -234,7 +247,9 @@ export default function ProgressPage() {
                           <label style={{ fontSize:10, color:'#8899bb' }}>{label}</label>
                           <input type="date"
                             value={(ganttMap[item.id] as any)?.[field] ?? ''}
-                            onChange={e => updateGantt(item.id, field, e.target.value)}
+                            onChange={e => { if (!isViewer) updateGantt(item.id, field, e.target.value) }}
+                          readOnly={isViewer}
+                          style={{ ...(isViewer ? { opacity:0.5, cursor:'not-allowed' } : {}) }}
                             style={{ background:'#0a0f1e', border:`1px solid ${z?.color ?? '#ffffff20'}`,
                               borderRadius:5, padding:'5px 8px', color:'#60a5fa',
                               fontFamily:'inherit', fontSize:11, outline:'none', width:'100%',
@@ -253,8 +268,9 @@ export default function ProgressPage() {
                           <div key={step.id} style={{ display:'flex', alignItems:'center', gap:8,
                             padding:'7px 9px', borderRadius:7,
                             background: done ? '#1a3a1a' : na ? '#ffffff05' : '#ffffff06' }}>
-                            <div onClick={() => toggleStep(step.id, done)}
-                              style={{ width:16, height:16, borderRadius:4, flexShrink:0, cursor:'pointer',
+                            <div onClick={() => !isViewer && toggleStep(step.id, done)}
+                              style={{ width:16, height:16, borderRadius:4, flexShrink:0,
+                                cursor: isViewer ? 'not-allowed' : 'pointer', opacity: isViewer ? 0.5 : 1,
                                 border:`1.5px solid ${done ? '#4ade80' : '#8899bb'}`,
                                 background: done ? '#1a3a1a' : 'transparent',
                                 display:'flex', alignItems:'center', justifyContent:'center',
@@ -269,7 +285,8 @@ export default function ProgressPage() {
                             <span style={{ fontFamily:'monospace', fontSize:10, color:'#8899bb' }}>
                               {step.weight}%
                             </span>
-                            <div onClick={() => toggleNA(step.id, na)}
+                            <div onClick={() => !isViewer && toggleNA(step.id, na)}
+                              title={isViewer ? 'Chỉ xem' : 'N/A'}
                               style={{ fontSize:9, padding:'2px 6px', borderRadius:6, cursor:'pointer',
                                 background: na ? '#7030A022' : '#ffffff08',
                                 color: na ? '#a060d0' : '#8899bb',
