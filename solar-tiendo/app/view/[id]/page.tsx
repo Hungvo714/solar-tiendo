@@ -67,6 +67,12 @@ export default function PublicViewPage() {
   return (
     <div style={{ minHeight:'100vh', background:'#0a0f1e', color:'#e8eaf0',
       fontFamily:'system-ui,sans-serif', fontSize:13 }}>
+      <style>{`
+        @media (max-width: 400px) {
+          .kpi-grid { grid-template-columns: 1fr !important; }
+        }
+        .scroll-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      `}</style>
 
       {/* HEADER */}
       <header style={{ background:'linear-gradient(135deg,#0d1b3e,#1a2d5a)',
@@ -196,7 +202,7 @@ export default function PublicViewPage() {
         <div style={{ borderRadius:8, overflow:'hidden', border:'1px solid #ffffff10' }}>
           <div style={{ display:'grid', gridTemplateColumns:'28px 1fr 65px 55px 55px 55px 80px',
             padding:'7px 12px', background:'#1a2d5a',
-            fontSize:9, fontWeight:600, color:'#8899bb', gap:6 }}>
+            fontSize:9, fontWeight:600, color:'#8899bb', gap:6, minWidth:480 }}>
             <span>STT</span><span>Hạng mục</span><span>Khu vực</span>
             <span style={{ textAlign:'center' }}>%</span>
             <span style={{ textAlign:'center' }}>BD KH</span>
@@ -213,7 +219,7 @@ export default function PublicViewPage() {
                 gridTemplateColumns:'28px 1fr 65px 55px 55px 55px 80px',
                 padding:'7px 12px', gap:6, alignItems:'center',
                 background: idx%2===0 ? (z ? z.light+'18' : '#ffffff08') : 'transparent',
-                borderTop:'1px solid #ffffff08' }}>
+                borderTop:'1px solid #ffffff08', minWidth:480 }}>
                 <span style={{ fontWeight:700, fontSize:10, color:'#8899bb' }}>{it.stt}</span>
                 <span style={{ fontSize:11, color:'#c8d8f0',
                   overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.name}</span>
@@ -234,7 +240,7 @@ export default function PublicViewPage() {
           gridTemplateColumns:'28px 1fr 65px 55px 55px 55px 80px',
           padding:'8px 12px', gap:6, alignItems:'center',
           background:'#1a2d5a', borderTop:'2px solid #4472C4',
-          borderRadius:'0 0 8px 8px' }}>
+          borderRadius:'0 0 8px 8px', minWidth:480 }}>
           <span/>
           <span style={{ fontSize:11, fontWeight:700, color:'#e8eaf0' }}>TỔNG TIẾN ĐỘ</span>
           <span/>
@@ -276,7 +282,7 @@ export default function PublicViewPage() {
                   return (
                     <div key={it.id} style={{ display:'grid',
                       gridTemplateColumns:'28px 1fr 65px 55px 55px',
-                      padding:'6px 12px', gap:6, alignItems:'center',
+                      padding:'6px 12px', gap:6, alignItems:'center', minWidth:380,
                       background: idx%2===0 ? '#fbbf2410' : 'transparent',
                       borderTop:'1px solid #ffffff08' }}>
                       <span style={{ fontWeight:700, fontSize:10, color:'#8899bb' }}>{it.stt}</span>
