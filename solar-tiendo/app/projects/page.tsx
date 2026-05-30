@@ -109,21 +109,15 @@ export default function ProjectsPage() {
     if (!newEmail) { alert('Nhập email thành viên'); return }
     setAddingMember(true)
     try {
-      // Bước 1: Tìm user đã tồn tại qua email
-      const { data: existingUsers, error: searchErr } = await supabase
-        .from('auth_users_view')
-        .select('id, email')
-        .eq('email', newEmail.trim().toLowerCase())
-        .limit(1)
+      // Bước 1: Tìm user đã tồn tại qua RPC function
+      const { data: existingId } = await supabase
+        .rpc('get_user_id_by_email', { user_email: newEmail.trim() })
 
       let userId: string | null = null
 
-      // User tìm thấy HOẶC lỗi "already registered" → user đã tồn tại
-      const userExists = (existingUsers && existingUsers.length > 0)
-
-      if (userExists) {
+      if (existingId) {
         // User đã tồn tại - add vào dự án
-        userId = existingUsers![0].id
+        userId = existingId as string
         const { error: upsertErr } = await supabase.from('project_members').upsert({
           project_id: pid, user_id: userId, role: newRole
         }, { onConflict: 'project_id,user_id' })
