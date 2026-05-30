@@ -192,6 +192,155 @@ export default function PublicViewPage() {
           })}
         </div>
 
+        {/* Dòng tổng cộng */}
+        <div style={{ display:'grid',
+          gridTemplateColumns:'28px 1fr 65px 55px 55px 55px 80px',
+          padding:'8px 12px', gap:6, alignItems:'center',
+          background:'#1a2d5a', borderTop:'2px solid #4472C4',
+          borderRadius:'0 0 8px 8px' }}>
+          <span/>
+          <span style={{ fontSize:11, fontWeight:700, color:'#e8eaf0' }}>TỔNG TIẾN ĐỘ</span>
+          <span/>
+          <span style={{ fontSize:13, fontFamily:'monospace', fontWeight:700,
+            textAlign:'center', color:'#F5A623' }}>{fp(tp)}</span>
+          <span/>
+          <span/>
+          <span style={{ fontSize:10, textAlign:'center',
+            color: tp>=1?'#4ade80':tp>0?'#fbbf24':'#8899bb' }}>
+            {tp>=1 ? '✅ Hoàn thành' : tp>0 ? '🔄 Đang TH' : '⬜ Chưa bắt đầu'}
+          </span>
+        </div>
+
+        {/* 1. Công việc đang thực hiện */}
+        {(() => {
+          const doingItems = items.filter(it => {
+            const pct = itemPct(it, progressMap)
+            return pct > 0 && pct < 1
+          })
+          return doingItems.length > 0 ? (
+            <div style={{ marginTop:16 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'#c0d0ef', marginBottom:8,
+                display:'flex', alignItems:'center', gap:6 }}>
+                <span style={{ background:'#fbbf24', width:8, height:8, borderRadius:'50%', display:'inline-block' }}/>
+                🔄 Công việc đang thực hiện ({doingItems.length})
+              </div>
+              <div style={{ borderRadius:8, overflow:'hidden', border:'1px solid #ffffff10' }}>
+                <div style={{ display:'grid', gridTemplateColumns:'28px 1fr 65px 55px 55px',
+                  padding:'6px 12px', background:'#1a2d5a',
+                  fontSize:9, fontWeight:600, color:'#8899bb', gap:6 }}>
+                  <span>STT</span><span>Hạng mục</span><span>Khu vực</span>
+                  <span style={{ textAlign:'center' }}>% Xong</span>
+                  <span style={{ textAlign:'center' }}>HT KH</span>
+                </div>
+                {doingItems.map((it, idx) => {
+                  const pct = itemPct(it, progressMap)
+                  const z   = zones.find(zn => zn.id === it.zone_id)
+                  const g   = ganttMap[it.id]
+                  return (
+                    <div key={it.id} style={{ display:'grid',
+                      gridTemplateColumns:'28px 1fr 65px 55px 55px',
+                      padding:'6px 12px', gap:6, alignItems:'center',
+                      background: idx%2===0 ? '#fbbf2410' : 'transparent',
+                      borderTop:'1px solid #ffffff08' }}>
+                      <span style={{ fontWeight:700, fontSize:10, color:'#8899bb' }}>{it.stt}</span>
+                      <span style={{ fontSize:11, color:'#c8d8f0',
+                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.name}</span>
+                      <span style={{ fontSize:10, color:z?.color }}>{z?.label}</span>
+                      <span>
+                        <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                          <div style={{ flex:1, height:4, background:'#ffffff15', borderRadius:2, overflow:'hidden' }}>
+                            <div style={{ height:'100%', width:`${pct*100}%`,
+                              background:'#fbbf24', borderRadius:2 }}/>
+                          </div>
+                          <span style={{ fontFamily:'monospace', fontSize:9, color:'#fbbf24', flexShrink:0 }}>
+                            {fp(pct)}
+                          </span>
+                        </div>
+                      </span>
+                      <span style={{ fontSize:10, color:'#60a5fa', textAlign:'center' }}>
+                        {fmtD(g?.plan_end)}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null
+        })()}
+
+        {/* 2. Công việc tuần tiếp theo */}
+        {(() => {
+          const now = new Date()
+          const daysToNextMon = (7 - now.getDay()) % 7 || 7
+          const nextMon = new Date(now)
+          nextMon.setDate(now.getDate() + daysToNextMon)
+          nextMon.setHours(0,0,0,0)
+          const nextSun = new Date(nextMon)
+          nextSun.setDate(nextMon.getDate() + 6)
+          nextSun.setHours(23,59,59,999)
+          const nextMonStr = nextMon.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})
+          const nextSunStr = nextSun.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})
+
+          const nextItems = items.filter(it => {
+            const g = ganttMap[it.id]
+            const startDate = g?.actual_start || g?.plan_start
+            const endDate   = g?.actual_end   || g?.plan_end
+            if (!startDate) return false
+            const s = new Date(startDate)
+            const e = endDate ? new Date(endDate) : s
+            const pct = itemPct(it, progressMap)
+            return s <= nextSun && e >= nextMon && pct < 1
+          })
+
+          return (
+            <div style={{ marginTop:16 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'#c0d0ef', marginBottom:8,
+                display:'flex', alignItems:'center', gap:6 }}>
+                <span style={{ background:'#60a5fa', width:8, height:8, borderRadius:'50%', display:'inline-block' }}/>
+                📋 Công việc tuần tới ({nextMonStr} - {nextSunStr})
+              </div>
+              {nextItems.length > 0 ? (
+                <div style={{ borderRadius:8, overflow:'hidden', border:'1px solid #ffffff10' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'28px 1fr 65px 55px 55px',
+                    padding:'6px 12px', background:'#1a2d5a',
+                    fontSize:9, fontWeight:600, color:'#8899bb', gap:6 }}>
+                    <span>STT</span><span>Hạng mục</span><span>Khu vực</span>
+                    <span style={{ textAlign:'center' }}>BD KH</span>
+                    <span style={{ textAlign:'center' }}>HT KH</span>
+                  </div>
+                  {nextItems.map((it, idx) => {
+                    const z = zones.find(zn => zn.id === it.zone_id)
+                    const g = ganttMap[it.id]
+                    return (
+                      <div key={it.id} style={{ display:'grid',
+                        gridTemplateColumns:'28px 1fr 65px 55px 55px',
+                        padding:'6px 12px', gap:6, alignItems:'center',
+                        background: idx%2===0 ? '#60a5fa10' : 'transparent',
+                        borderTop:'1px solid #ffffff08' }}>
+                        <span style={{ fontWeight:700, fontSize:10, color:'#8899bb' }}>{it.stt}</span>
+                        <span style={{ fontSize:11, color:'#c8d8f0',
+                          overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.name}</span>
+                        <span style={{ fontSize:10, color:z?.color }}>{z?.label}</span>
+                        <span style={{ fontSize:10, color:'#8899bb', textAlign:'center' }}>
+                          {fmtD(g?.plan_start)}
+                        </span>
+                        <span style={{ fontSize:10, color:'#60a5fa', textAlign:'center' }}>
+                          {fmtD(g?.plan_end)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div style={{ padding:'12px 14px', borderRadius:8, fontSize:11,
+                  background:'#ffffff08', color:'#8899bb', border:'1px solid #ffffff10' }}>
+                  ✅ Không có công việc nào trong tuần tới
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
         <div style={{ textAlign:'center', marginTop:20, fontSize:10, color:'#ffffff25' }}>
           HTE Managed Services · Solar Tiến Độ · Chỉ xem — không thể chỉnh sửa
         </div>
