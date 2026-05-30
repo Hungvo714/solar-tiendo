@@ -116,10 +116,7 @@ export default function ReportPage() {
     setTimeout(()=>setSaved(false), 3000)
   }
 
-  function handlePrint() {
-    setPrintMode(true)
-    setTimeout(() => { window.print(); setPrintMode(false) }, 300)
-  }
+
 
   if (loading) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
@@ -133,7 +130,15 @@ export default function ReportPage() {
 
   const printStyle = `
     @media print {
-      @page { size: A4 portrait; margin: 10mm 12mm; }
+      @page {
+        size: A4 portrait;
+        margin: 10mm 12mm;
+        @top-right {
+          content: "${project?.name ?? ''}";
+          font-size: 9pt;
+          color: #666;
+        }
+      }
       body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       .no-print { display: none !important; }
       .print-only { display: block !important; }
@@ -142,6 +147,18 @@ export default function ReportPage() {
       .report-card { border: none !important; border-radius: 0 !important; padding: 0 !important; }
     }
   `
+
+  // Set document title = tên dự án khi print
+  function handlePrint() {
+    const origTitle = document.title
+    document.title = project?.name ?? 'Bao Cao Tien Do'
+    setPrintMode(true)
+    setTimeout(() => {
+      window.print()
+      document.title = origTitle
+      setPrintMode(false)
+    }, 300)
+  }
 
   return (
     <div style={{ display:'flex', flexDirection:'column', minHeight:'100vh',
@@ -364,14 +381,14 @@ export default function ReportPage() {
                           <span style={{ textAlign:'center' }}>BD KH</span>
                           <span style={{ textAlign:'center' }}>HT KH</span>
                         </div>
-                        {nxItems.map(it => {
+                        {nxItems.map((it, idx) => {
                           const z = zones.find(zn => zn.id === it.zone_id)
                           const g = ganttMap[it.id]
                           return (
                             <div key={it.id} style={{ display:'grid',
                               gridTemplateColumns:'1fr 70px 65px 65px',
                               padding:'6px 10px', gap:6, alignItems:'center',
-                              background: z ? z.light+'18' : 'transparent',
+                              background: idx%2===0 ? (z ? z.light+'25' : '#ffffff08') : (printMode ? '#fff' : 'transparent'),
                               borderTop: '1px solid #ffffff08' }}>
                               <span style={{ fontSize:10, color: printMode ? '#1a1a2e' : '#c8d8f0' }}>
                                 <span style={{ color:z?.color, fontSize:9, marginRight:3 }}>{it.stt}.</span>
@@ -430,9 +447,13 @@ export default function ReportPage() {
 
             {/* Footer print */}
             {printMode && (
-              <div style={{ borderTop:'1px solid #ddd', paddingTop:8, textAlign:'center',
-                fontSize:9, color:'#999' }}>
-                HTE Managed Services · Solar Tiến Độ · {today}
+              <div style={{ borderTop:'1px solid #ccc', paddingTop:8, marginTop:8,
+                display:'flex', justifyContent:'space-between', alignItems:'center',
+                fontSize:9, color:'#666' }}>
+                <span style={{ fontWeight:600, color:'#333' }}>
+                  {project?.name} · {project?.client} · {project?.contractor}
+                </span>
+                <span>Ngày {today} · Trang <span className="page-num">1</span></span>
               </div>
             )}
 
