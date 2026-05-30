@@ -115,43 +115,24 @@ export default function ProjectsPage() {
       if (existingUsers && existingUsers.length > 0) {
         // User đã tồn tại - add lại vào dự án
         userId = existingUsers[0].id
+        const { error: upsertErr } = await supabase.from('project_members').upsert({
+          project_id: pid, user_id: userId, role: newRole
+        }, { onConflict: 'project_id,user_id' })
+        if (upsertErr) { alert('Lỗi: ' + upsertErr.message); return }
+        alert(`✅ Đã thêm lại ${newEmail} vào dự án!\nRole: ${newRole}`)
+      } else {
+        // User mới - bắt buộc nhập mật khẩu
+        const pass = newPass || Math.random().toString(36).slice(-8) + 'Aa1!'
+        const { data, error } = await supabase.auth.signUp({
+          email: newEmail, password: pass
+        })
+        if (error || !data.user) { alert('Lỗi tạo user: ' + error?.message); return }
+        userId = data.user.id
         await supabase.from('project_members').upsert({
           project_id: pid, user_id: userId, role: newRole
         }, { onConflict: 'project_id,user_id' })
-        alert(`✅ Đã thêm lại ${newEmail} vào dự án với role: ${newRole}`)
-      } else {
-        // User mới - tạo tài khoản
-        if (!newPass) {
-          // Không có mật khẩu - gửi magic link
-          const { error: invErr } = await supabase.auth.signInWithOtp({
-            email: newEmail,
-            options: { shouldCreateUser: true }
-          })
-          if (invErr) { alert('Lỗi gửi email mời: ' + invErr.message); return }
-
-          // Tạm thời tạo user với signUp để lấy ID
-          const { data, error } = await supabase.auth.signUp({
-            email: newEmail,
-            password: Math.random().toString(36).slice(-12) + 'Aa1!',
-          })
-          if (error || !data.user) { alert('Lỗi: ' + error?.message); return }
-          userId = data.user.id
-          await supabase.from('project_members').upsert({
-            project_id: pid, user_id: userId, role: newRole
-          }, { onConflict: 'project_id,user_id' })
-          alert(`✅ Đã gửi email mời đến ${newEmail}\nHọ sẽ nhận email để đặt mật khẩu và vào app.`)
-        } else {
-          // Có mật khẩu - tạo tài khoản thông thường
-          const { data, error } = await supabase.auth.signUp({
-            email: newEmail, password: newPass
-          })
-          if (error || !data.user) { alert('Lỗi: ' + error?.message); return }
-          userId = data.user.id
-          await supabase.from('project_members').upsert({
-            project_id: pid, user_id: userId, role: newRole
-          }, { onConflict: 'project_id,user_id' })
-          alert(`✅ Đã tạo tài khoản!\nEmail: ${newEmail}\nMật khẩu: ${newPass}\nRole: ${newRole}`)
-        }
+        const finalPass = newPass || pass
+        alert(`✅ Đã tạo tài khoản mới!\nEmail: ${newEmail}\nMật khẩu: ${finalPass}\nRole: ${newRole}\n\n💡 Gửi thông tin này cho thành viên để đăng nhập.`)
       }
       setNewEmail(''); setNewPass(''); setNewRole('editor')
       loadMembers(pid)
