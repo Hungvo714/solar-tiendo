@@ -119,6 +119,43 @@ export default function PublicViewPage() {
 
       <main style={{ maxWidth:800, margin:'0 auto', padding:16 }}>
 
+        {/* Tổng tiến độ dự án - ô lớn */}
+        <div style={{ background:'linear-gradient(135deg,#0d1b3e,#1a2d5a)',
+          border:'1px solid #F5A623', borderRadius:14, padding:'20px 24px',
+          marginBottom:12, display:'flex', alignItems:'center',
+          justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:11, color:'#8899bb', marginBottom:4, letterSpacing:1 }}>
+              TỔNG TIẾN ĐỘ DỰ ÁN
+            </div>
+            <div style={{ fontFamily:'monospace', fontSize:48, fontWeight:700,
+              color:'#F5A623', lineHeight:1 }}>
+              {fp(tp)}
+            </div>
+            <div style={{ fontSize:11, color:'#8899bb', marginTop:6 }}>
+              Ngày {el}/{total} · Còn {total - el} ngày
+            </div>
+            {/* Progress bar lớn */}
+            <div style={{ marginTop:10, height:8, background:'#ffffff15',
+              borderRadius:4, overflow:'hidden', width:'100%', minWidth:200 }}>
+              <div style={{ height:'100%', width:`${tp*100}%`,
+                background:'linear-gradient(90deg,#F5A623,#ff8c00)',
+                borderRadius:4, transition:'width .6s' }}/>
+            </div>
+          </div>
+          <svg width="90" height="90" style={{ transform:'rotate(-90deg)', flexShrink:0 }}>
+            <circle cx="45" cy="45" r="40" fill="none" stroke="#ffffff15" strokeWidth="8"/>
+            <circle cx="45" cy="45" r="40" fill="none" stroke="#F5A623" strokeWidth="8"
+              strokeDasharray={`${2*Math.PI*40*tp} ${2*Math.PI*40}`} strokeLinecap="round"/>
+            <text x="45" y="45" fill="#e8eaf0" fontFamily="monospace"
+              fontSize="16" fontWeight="700"
+              textAnchor="middle" dominantBaseline="central"
+              style={{ transform:'rotate(90deg)', transformBox:'fill-box' }}>
+              {Math.round(tp*100)}%
+            </text>
+          </svg>
+        </div>
+
         {/* KPI Grid */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8, marginBottom:16 }}>
           {zones.map(z => {
