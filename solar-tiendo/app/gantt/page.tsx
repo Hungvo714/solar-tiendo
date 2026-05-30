@@ -111,12 +111,6 @@ export default function GanttPage() {
             fontSize:10, width:36, height:36, borderRadius:8, flexShrink:0,
             display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}
             onClick={() => window.location.href='/projects'}>HTE</div>
-          <button onClick={() => window.location.href='/projects'}
-            style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 10px',
-              background:'#ffffff10', border:'1px solid #ffffff20', borderRadius:7,
-              color:'#e8eaf0', fontSize:11, cursor:'pointer', flexShrink:0 }}>
-            ← Chọn dự án
-          </button>
           <div style={{ minWidth:0 }}>
             <div style={{ fontSize:13, fontWeight:700, color:'#fff',
               overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{project?.name}</div>
