@@ -160,47 +160,74 @@ export default function DashboardPage() {
           })}
         </div>
 
-        {/* Table */}
+        {/* Table theo 3 nhóm */}
         <div style={{ fontSize:12, fontWeight:700, color:'#c0d0ef', marginBottom:8 }}>
           📋 Tiến độ từng hạng mục
         </div>
-        <div style={{ borderRadius:8, overflow:'hidden', border:'1px solid #ffffff10' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'28px 1fr 72px 86px 80px',
-            padding:'7px 10px', background:'#1a2d5a',
-            fontSize:10, fontWeight:600, color:'#8899bb', gap:6 }}>
-            <span>STT</span><span>Hạng mục</span><span>Khu vực</span>
-            <span>% Xong</span><span>Trạng thái</span>
-          </div>
-          {items.map(it => {
-            const pct = itemPct(it, progressMap)
-            const z   = zones.find(zn => zn.id === it.zone_id)
-            const st  = statusOf(pct)
-            return (
-              <div key={it.id} style={{ display:'grid',
-                gridTemplateColumns:'28px 1fr 72px 86px 80px',
-                padding:'7px 10px', background: z ? z.light+'18' : 'transparent',
-                borderTop:'1px solid #ffffff08', gap:6, alignItems:'center',
-                cursor:'pointer' }}
-                onClick={() => navigate('/progress')}>
-                <span style={{ fontWeight:700, fontSize:11, color:'#8899bb' }}>{it.stt}</span>
-                <span style={{ fontSize:11, color:'#c8d8f0',
-                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.name}</span>
-                <span style={{ display:'flex', alignItems:'center', gap:3, fontSize:10 }}>
-                  {z && <i className={`ti ${z.icon}`} style={{ color:z.color, fontSize:11 }}/>}
-                  <span style={{ color:'#8899bb' }}>{z?.label}</span>
+        {[
+          { key:'A', label:'A. HẠNG MỤC VẬT TƯ', color:'#E65100', bg:'#FCE4D6' },
+          { key:'B', label:'B. HẠNG MỤC THI CÔNG', color:'#1565C0', bg:'#BBDEFB' },
+          { key:'C', label:'C. HẠNG MỤC ĐẤU NỐI VẬN HÀNH', color:'#2E7D32', bg:'#C8E6C9' },
+        ].map(group => {
+          const groupItems = items.filter((it:any) => it.group_type === group.key)
+          const groupPct = groupItems.length > 0
+            ? groupItems.reduce((sum:number, it:any) => sum + itemPct(it, progressMap) * it.weight, 0) /
+              groupItems.reduce((sum:number, it:any) => sum + it.weight, 0)
+            : 0
+          return (
+            <div key={group.key} style={{ marginBottom:12 }}>
+              {/* Group header */}
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                padding:'8px 12px', background:`${group.color}22`,
+                border:`1px solid ${group.color}44`, borderRadius:'8px 8px 0 0',
+                borderBottom:'none' }}>
+                <span style={{ fontSize:11, fontWeight:700, color:group.color }}>{group.label}</span>
+                <span style={{ fontFamily:'monospace', fontSize:11, fontWeight:700, color:group.color }}>
+                  {fp(groupPct)}
                 </span>
-                <span style={{ display:'flex', alignItems:'center', gap:5 }}>
-                  <div style={{ flex:1, height:3, background:'#ffffff15', borderRadius:2, overflow:'hidden', minWidth:24 }}>
-                    <div style={{ height:'100%', width:`${pct*100}%`, background:z?.color, transition:'width .4s' }}/>
-                  </div>
-                  <span style={{ fontFamily:'monospace', fontSize:10 }}>{fp(pct)}</span>
-                </span>
-                <span style={{ fontSize:10,
-                  color: pct>=1?'#4ade80':pct>0?'#fbbf24':'#8899bb' }}>{st.l}</span>
               </div>
-            )
-          })}
-        </div>
+              {/* Group table header */}
+              <div style={{ display:'grid', gridTemplateColumns:'28px 1fr 72px 86px 80px',
+                padding:'6px 10px', background:'#1a2d5a',
+                fontSize:9, fontWeight:600, color:'#8899bb', gap:6 }}>
+                <span>STT</span><span>Hạng mục</span><span>Khu vực</span>
+                <span>% Xong</span><span>Trạng thái</span>
+              </div>
+              {/* Group rows */}
+              <div style={{ border:'1px solid #ffffff10', borderTop:'none', borderRadius:'0 0 8px 8px', overflow:'hidden' }}>
+                {groupItems.map((it:any) => {
+                  const pct = itemPct(it, progressMap)
+                  const z   = zones.find((zn:any) => zn.id === it.zone_id)
+                  const st  = statusOf(pct)
+                  return (
+                    <div key={it.id} style={{ display:'grid',
+                      gridTemplateColumns:'28px 1fr 72px 86px 80px',
+                      padding:'7px 10px', background: z ? z.light+'18' : 'transparent',
+                      borderTop:'1px solid #ffffff08', gap:6, alignItems:'center',
+                      cursor:'pointer' }}
+                      onClick={() => navigate('/progress')}>
+                      <span style={{ fontWeight:700, fontSize:11, color:'#8899bb' }}>{it.stt}</span>
+                      <span style={{ fontSize:11, color:'#c8d8f0',
+                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.name}</span>
+                      <span style={{ display:'flex', alignItems:'center', gap:3, fontSize:10 }}>
+                        {z && <i className={`ti ${z.icon}`} style={{ color:z.color, fontSize:11 }}/>}
+                        <span style={{ color:'#8899bb' }}>{z?.label}</span>
+                      </span>
+                      <span style={{ display:'flex', alignItems:'center', gap:5 }}>
+                        <div style={{ flex:1, height:3, background:'#ffffff15', borderRadius:2, overflow:'hidden', minWidth:24 }}>
+                          <div style={{ height:'100%', width:`${pct*100}%`, background:z?.color, transition:'width .4s' }}/>
+                        </div>
+                        <span style={{ fontFamily:'monospace', fontSize:10 }}>{fp(pct)}</span>
+                      </span>
+                      <span style={{ fontSize:10,
+                        color: pct>=1?'#4ade80':pct>0?'#fbbf24':'#8899bb' }}>{st.l}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
       </main>
     </div>
   )
