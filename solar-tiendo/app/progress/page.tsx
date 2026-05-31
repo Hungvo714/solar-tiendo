@@ -181,32 +181,35 @@ export default function ProgressPage() {
       && item.group_type !== 'A'
 
     if (isTCStart && value) {
-      // Tìm hạng mục vật tư phụ thuộc (depends_on)
       const vtDeps = dependencies.filter(d => d.item_stt === item.stt)
       for (const dep of vtDeps) {
         const vtItem = items.find(it => it.stt === dep.depends_on_stt && (it as any).group_type === 'A')
         if (!vtItem) continue
         const vtGantt = ganttMap[vtItem.id] as any
         const vtEnd = vtGantt?.actual_end || vtGantt?.plan_end
+        const orderDays = (vtItem as any).order_days ?? 7
+        const newVtEnd = new Date(new Date(value).getTime() - 86400000)
+          .toISOString().split('T')[0]
+        const newVtStart = new Date(new Date(newVtEnd).getTime() - orderDays * 86400000)
+          .toISOString().split('T')[0]
 
-        if (vtEnd && value <= vtEnd) {
-          // Conflict! BD thi công <= HT vật tư
-          // Tính ngày vật tư mới nếu update
-          const orderDays = (vtItem as any).order_days ?? 7
-          const newVtEnd = new Date(new Date(value).getTime() - 86400000)
-            .toISOString().split('T')[0]
-          const newVtStart = new Date(new Date(newVtEnd).getTime() - orderDays * 86400000)
-            .toISOString().split('T')[0]
-
+        if (!vtEnd) {
+          // Vật tư chưa có ngày → tự động tính luôn không cần hỏi
+          const isActual = field === 'actual_start'
+          await updateGantt(vtItem.id, isActual ? 'actual_end'   : 'plan_end',   newVtEnd)
+          await updateGantt(vtItem.id, isActual ? 'actual_start' : 'plan_start', newVtStart)
+        } else if (value <= vtEnd) {
+          // Có ngày rồi nhưng conflict → hỏi user
           setConflict({
             tcItemId: item.id, tcField: field, tcValue: value,
             vtItem, newVtEnd, newVtStart
           })
-          return // Chưa lưu, chờ user chọn
+          return
         }
+        // vtEnd có và không conflict → không làm gì với vật tư
       }
     }
-    // Không conflict - lưu bình thường
+    // Lưu ngày thi công
     updateGantt(item.id, field, value)
   }
 
