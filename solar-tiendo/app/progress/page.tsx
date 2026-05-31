@@ -30,6 +30,7 @@ export default function ProgressPage() {
   const [search,       setSearch]       = useState('')
   const [expanded,     setExpanded]     = useState<Record<string, boolean>>({})
   const [isViewer,     setIsViewer]     = useState(false)
+  const [isAdmin,      setIsAdmin]      = useState(false)
   const [dependencies, setDependencies] = useState<{item_stt:number, depends_on_stt:number}[]>([])
   const [subItems,     setSubItems]     = useState<Record<string, any[]>>({})
   const [editSubItem,  setEditSubItem]  = useState<{itemId:string, sub?:any}|null>(null)
@@ -53,6 +54,7 @@ export default function ProgressPage() {
       if (!proj) { window.location.href = '/projects'; return }
       const role = (memberData as any)?.role ?? 'viewer'
       setIsViewer(role === 'viewer')
+      setIsAdmin(role === 'admin')
       setProject(proj); setZones(z); setItems(it as Item[])
       const pm: Record<string, Progress> = {}
       for (const p of pr) pm[(p as Progress).step_id] = p as Progress
@@ -76,6 +78,21 @@ export default function ProgressPage() {
     }
     load()
   }, [])
+
+  async function resetAll() {
+    if (!confirm('⚠️ Xóa TẤT CẢ dữ liệu đã nhập của dự án này?\n\nBao gồm:\n- Tất cả tick hoàn thành / N/A\n- Tất cả ngày BD/HT kế hoạch và thực tế\n\nHành động này KHÔNG THỂ hoàn tác!')) return
+    if (!confirm('Xác nhận lần 2: Bạn chắc chắn muốn xóa hết?')) return
+
+    // Xóa progress
+    await supabase.from('progress').delete().eq('project_id', projectId)
+    // Xóa gantt dates
+    await supabase.from('gantt_dates').delete().eq('project_id', projectId)
+    // Reset state
+    setProgressMap({})
+    setGanttMap({})
+    alert('✅ Đã xóa toàn bộ dữ liệu. Trang sẽ tải lại...')
+    window.location.reload()
+  }
 
   async function toggleSubItem(itemId: string, subId: string, isDone: boolean) {
     const now = new Date().toISOString()
@@ -755,6 +772,19 @@ export default function ProgressPage() {
             ))}
           </div>
         </div>
+
+        {/* Nút Reset - chỉ Admin */}
+        {isAdmin && (
+          <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:6 }}>
+            <button onClick={resetAll}
+              style={{ padding:'5px 12px', background:'transparent',
+                border:'1px solid #FF444440', borderRadius:8,
+                color:'#FF8888', fontFamily:'inherit', fontSize:10,
+                cursor:'pointer', display:'flex', alignItems:'center', gap:5 }}>
+              🗑️ Xóa hết dữ liệu nhập
+            </button>
+          </div>
+        )}
 
         {/* Items */}
         <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
