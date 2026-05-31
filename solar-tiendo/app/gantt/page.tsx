@@ -71,7 +71,7 @@ export default function GanttPage() {
   const el        = elapsedDays(startDate)
   const todayPct  = Math.min(100, (el / total) * 100)
   const endDate   = new Date(new Date(startDate).getTime() + total * 86400000)
-    .toLocaleDateString('vi-VN')
+    .toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})
 
   // Cột tên: 140px mobile, 200px desktop
   const NAME_W = isMobile ? 130 : 200
@@ -122,7 +122,7 @@ export default function GanttPage() {
         <div style={{ display:'flex', justifyContent:'space-between', fontSize:10,
           color:'#8899bb', padding:'7px 10px', background:'#ffffff08',
           borderRadius:7, marginBottom:8, flexWrap:'wrap', gap:4 }}>
-          <span>📅 {new Date(startDate).toLocaleDateString('vi-VN')} → {endDate}</span>
+          <span>📅 {new Date(startDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})} → {endDate}</span>
           <span style={{ color:'#F5A623' }}>⚡ Ngày {el}/{total}</span>
         </div>
 
