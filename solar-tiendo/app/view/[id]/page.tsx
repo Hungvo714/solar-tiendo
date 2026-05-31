@@ -124,18 +124,39 @@ export default function PublicViewPage() {
         <div style={{ background:'linear-gradient(135deg,#0d1b3e,#1a2d5a)',
           border:'1px solid #F5A623', borderRadius:12, padding:'16px 20px',
           marginBottom:12, display:'flex', alignItems:'center',
-          justifyContent:'space-between', gap:12 }}>
-          <div style={{ flex:1 }}>
+          justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
+          {/* Trái: % tiến độ */}
+          <div style={{ flex:1, minWidth:140 }}>
             <div style={{ fontSize:10, color:'#8899bb', marginBottom:4 }}>TỔNG TIẾN ĐỘ DỰ ÁN</div>
             <div style={{ fontFamily:'monospace', fontSize:40, fontWeight:700,
               color:'#F5A623', lineHeight:1 }}>{fp(tp)}</div>
             <div style={{ fontSize:10, color:'#8899bb', marginTop:6 }}>
-              Ngày {el}/{total} · Còn {total-el} ngày
+              Ngày {el}/{total} · Còn {Math.max(0, total-el)} ngày
             </div>
             <div style={{ marginTop:8, height:6, background:'#ffffff15',
               borderRadius:3, overflow:'hidden' }}>
               <div style={{ height:'100%', width:`${tp*100}%`,
                 background:'linear-gradient(90deg,#F5A623,#ff8c00)', borderRadius:3 }}/>
+            </div>
+          </div>
+          {/* Phải: Thông tin dự án */}
+          <div style={{ display:'flex', flexDirection:'column', gap:6,
+            borderLeft:'1px solid #ffffff15', paddingLeft:16, minWidth:160 }}>
+            <div>
+              <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>DỰ ÁN</div>
+              <div style={{ fontSize:11, fontWeight:600, color:'#e8eaf0' }}>{project?.name}</div>
+            </div>
+            <div>
+              <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>CHỦ ĐẦU TƯ</div>
+              <div style={{ fontSize:11, color:'#c8d8f0' }}>{project?.client}</div>
+            </div>
+            <div>
+              <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>NHÀ THẦU</div>
+              <div style={{ fontSize:11, color:'#c8d8f0' }}>{project?.contractor}</div>
+            </div>
+            <div>
+              <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>NGÀY CẬP NHẬT</div>
+              <div style={{ fontSize:11, color:'#60a5fa' }}>{today}</div>
             </div>
           </div>
         </div>
