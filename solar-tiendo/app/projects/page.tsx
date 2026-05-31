@@ -354,7 +354,7 @@ export default function ProjectsPage() {
                       <div style={{ fontSize:11, color:'#8899bb', display:'flex', gap:10, flexWrap:'wrap' }}>
                         {proj.client && <span>🏢 {proj.client}</span>}
                         <span>⏱ {proj.total_days} ngày</span>
-                        {proj.start_date && <span>📅 {new Date(proj.start_date).toLocaleDateString('vi-VN')}</span>}
+                        {proj.start_date && <span>📅 {new Date(proj.start_date).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})}</span>}
                       </div>
                     </div>
                   </div>
