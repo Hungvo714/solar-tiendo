@@ -22,6 +22,7 @@ export default function ProgressPage() {
   const [search,      setSearch]      = useState('')
   const [expanded,    setExpanded]    = useState<Record<string, boolean>>({})
   const [isViewer,    setIsViewer]    = useState(false)
+  const [dependencies, setDependencies] = useState<{item_stt:number, depends_on_stt:number}[]>([])
 
   useEffect(() => {
     const pid = new URLSearchParams(window.location.search).get('project') || ''
@@ -54,6 +55,45 @@ export default function ProgressPage() {
     }
     load()
   }, [])
+
+  // Tính ngày BD tối thiểu cho hạng mục thi công
+  function getMinStartDate(itemStt: number): string | undefined {
+    const deps = dependencies.filter(d => d.item_stt === itemStt)
+    if (deps.length === 0) return undefined
+    
+    let maxDate: Date | null = null
+    for (const dep of deps) {
+      const depItem = items.find(it => it.stt === dep.depends_on_stt)
+      if (!depItem) continue
+      const g = ganttMap[depItem.id]
+      // Lấy ngày HT thực tế hoặc HT kế hoạch của hạng mục điều kiện
+      const endDate = g?.actual_end || g?.plan_end
+      if (!endDate) continue // Chưa có ngày → không ràng buộc
+      const d = new Date(endDate)
+      d.setDate(d.getDate() + 1) // Ngày hôm sau
+      if (!maxDate || d > maxDate) maxDate = d
+    }
+    return maxDate ? maxDate.toISOString().split('T')[0] : undefined
+  }
+
+  // Tính ngày HT tối đa cho hạng mục vật tư (không được vượt ngày BD thi công)
+  function getMaxEndDate(itemStt: number): string | undefined {
+    // Tìm hạng mục thi công phụ thuộc vào hạng mục này
+    const dependents = dependencies.filter(d => d.depends_on_stt === itemStt)
+    if (dependents.length === 0) return undefined
+    
+    let minDate: Date | null = null
+    for (const dep of dependents) {
+      const depItem = items.find(it => it.stt === dep.item_stt)
+      if (!depItem) continue
+      const g = ganttMap[depItem.id]
+      const startDate = g?.actual_start || g?.plan_start
+      if (!startDate) continue
+      const d = new Date(startDate)
+      if (!minDate || d < minDate) minDate = d
+    }
+    return minDate ? minDate.toISOString().split('T')[0] : undefined
+  }
 
   async function toggleStep(stepId: string, isDone: boolean) {
     setProgressMap(prev => ({
@@ -242,12 +282,39 @@ export default function ProgressPage() {
                     {/* Gantt dates */}
                     <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:10 }}>
                       {[['plan_start','BD Kế hoạch'],['plan_end','HT Kế hoạch'],
-                        ['actual_start','BD Thực tế'],['actual_end','HT Thực tế']].map(([field, label]) => (
+                        ['actual_start','BD Thực tế'],['actual_end','HT Thực tế']].map(([field, label]) => {
+                        const isStart = field==='plan_start' || field==='actual_start'
+                        const isEnd   = field==='plan_end'   || field==='actual_end'
+                        const minDate = isStart ? getMinStartDate(item.stt) : undefined
+                        const maxDate = isEnd   ? getMaxEndDate(item.stt)   : undefined
+                        const val     = (ganttMap[item.id] as any)?.[field] ?? ''
+                        return (
                         <div key={field} style={{ display:'flex', flexDirection:'column', gap:3, flex:1, minWidth:130 }}>
-                          <label style={{ fontSize:10, color:'#8899bb' }}>{label}</label>
+                          <label style={{ fontSize:10, color:'#8899bb' }}>
+                            {label}
+                            {minDate && isStart && (
+                              <span style={{ color:'#fbbf24', fontSize:9 }}>
+                                {' '}(từ {new Date(minDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})})
+                              </span>
+                            )}
+                          </label>
                           <input type="date"
-                            value={(ganttMap[item.id] as any)?.[field] ?? ''}
-                            onChange={e => { if (!isViewer) updateGantt(item.id, field, e.target.value) }}
+                            value={val}
+                            min={isViewer ? undefined : minDate}
+                            max={isViewer ? undefined : maxDate}
+                            onChange={e => {
+                              if (isViewer) return
+                              const v = e.target.value
+                              if (minDate && v && v < minDate) {
+                                alert('⚠️ Ngày bắt đầu phải từ ' + new Date(minDate).toLocaleDateString('vi-VN') + ' trở đi\n(Sau khi hoàn thành hạng mục điều kiện)')
+                                return
+                              }
+                              if (maxDate && v && v > maxDate) {
+                                alert('⚠️ Ngày kết thúc không được sau ' + new Date(maxDate).toLocaleDateString('vi-VN') + '\n(Trước ngày bắt đầu thi công)')
+                                return
+                              }
+                              updateGantt(item.id, field, v)
+                            }}
                           readOnly={isViewer}
                           style={{ ...(isViewer ? { opacity:0.5, cursor:'not-allowed' } : {}) }}
                             style={{ background:'#0a0f1e', border:`1px solid ${z?.color ?? '#ffffff20'}`,
@@ -255,7 +322,8 @@ export default function ProgressPage() {
                               fontFamily:'inherit', fontSize:11, outline:'none', width:'100%',
                               colorScheme:'dark' }}/>
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
 
                     {/* Steps */}
