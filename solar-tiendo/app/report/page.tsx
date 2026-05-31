@@ -601,11 +601,7 @@ export default function ReportPage() {
 
             {/* Sign */}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:16 }}>
-              {[
-                reporter ? `Người lập báo cáo: ${reporter}` : 'Người lập báo cáo',
-                'Giám sát trưởng',
-                'Chủ đầu tư xác nhận'
-              ].map(r => (
+              {['Người lập báo cáo','Giám sát trưởng','Chủ đầu tư xác nhận'].map(r => (
                 <div key={r} style={{
                   border: printMode ? '1px solid #ccc' : '1px dashed #ffffff20',
                   borderRadius:7, padding:10, textAlign:'center' }}>
