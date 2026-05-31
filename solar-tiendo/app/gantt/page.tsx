@@ -5,6 +5,12 @@ import { itemPct, elapsedDays } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
 import { getItemsWithSteps, getZones, getProgress, getGanttDates } from '@/lib/queries'
 
+const GROUPS = [
+  { key:'A', label:'A. HẠNG MỤC VẬT TƯ',          color:'#E65100' },
+  { key:'B', label:'B. HẠNG MỤC THI CÔNG',          color:'#1565C0' },
+  { key:'C', label:'C. HẠNG MỤC ĐẤU NỐI VẬN HÀNH', color:'#2E7D32' },
+]
+
 const TABS = [
   { path:'/dashboard', icon:'ti-layout-dashboard', label:'Tổng quan' },
   { path:'/progress',  icon:'ti-checklist',        label:'Tiến độ'   },
@@ -151,11 +157,22 @@ export default function GanttPage() {
               display:'flex', alignItems:'center' }}>
               Hạng mục
             </div>
-            {/* Rows */}
-            {items.map(item => {
-              const pct = itemPct(item, progressMap)
-              const z   = zones.find(zn => zn.id === item.zone_id)
-              const g   = ganttMap[item.id]
+            {/* Rows theo nhóm */}
+            {GROUPS.map(group => {
+              const groupItems = items.filter((it:any) => it.group_type === group.key)
+              if (groupItems.length === 0) return null
+              return (
+                <div key={group.key}>
+                  {/* Group header - cột tên */}
+                  <div style={{ padding:'5px 8px', background:`${group.color}33`,
+                    borderTop:`2px solid ${group.color}`, fontSize:9, fontWeight:700,
+                    color:group.color, height:24, display:'flex', alignItems:'center' }}>
+                    {group.label}
+                  </div>
+                  {groupItems.map(item => {
+                    const pct = itemPct(item, progressMap)
+                    const z   = zones.find(zn => zn.id === item.zone_id)
+                    const g   = ganttMap[item.id]
               return (
                 <div key={item.id} style={{ padding:'5px 8px', borderTop:'1px solid #ffffff08',
                   background:'#0d1b3e', minHeight:40, display:'flex',
@@ -206,13 +223,21 @@ export default function GanttPage() {
                   background:'#F5A623', left:`${todayPct}%`, opacity:0.9 }}/>
               </div>
 
-              {/* Bar rows */}
-              {items.map(item => {
-                const pct  = itemPct(item, progressMap)
-                const z    = zones.find(zn => zn.id === item.zone_id)
-                const g    = ganttMap[item.id]
-                const plan = barPos(g, 'plan_start', 'plan_end')
-                const act  = barPos(g, 'actual_start', 'actual_end')
+              {/* Bar rows theo nhóm */}
+              {GROUPS.map(group => {
+                const groupItems = items.filter((it:any) => it.group_type === group.key)
+                if (groupItems.length === 0) return null
+                return (
+                  <div key={group.key}>
+                    {/* Group header - timeline */}
+                    <div style={{ height:24, background:`${group.color}22`,
+                      borderTop:`2px solid ${group.color}` }}/>
+                    {groupItems.map(item => {
+                      const pct  = itemPct(item, progressMap)
+                      const z    = zones.find(zn => zn.id === item.zone_id)
+                      const g    = ganttMap[item.id]
+                      const plan = barPos(g, 'plan_start', 'plan_end')
+                      const act  = barPos(g, 'actual_start', 'actual_end')
                 const isLate = g?.plan_end && !g?.actual_end
                   && new Date(g.plan_end) < new Date() && pct < 1
 
@@ -261,6 +286,9 @@ export default function GanttPage() {
                       position:'absolute', top:0, bottom:0, width:2,
                       background:'#F5A623', left:`${todayPct}%`, opacity:0.6
                     }}/>
+                  </div>
+                )
+                    })}
                   </div>
                 )
               })}
