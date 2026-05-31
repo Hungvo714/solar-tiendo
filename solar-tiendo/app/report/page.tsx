@@ -23,6 +23,8 @@ export default function ReportPage() {
   const [issues,      setIssues]      = useState('')
   const [plan,        setPlan]        = useState('')
   const [saving,      setSaving]      = useState(false)
+  const [subItems,    setSubItems]    = useState<Record<string, any[]>>({})
+  const [expandedSub, setExpandedSub] = useState<Record<string, boolean>>({})
   const [saved,       setSaved]       = useState(false)
   const [weekNum,     setWeekNum]     = useState('')
   const [reporter,    setReporter]    = useState('')
@@ -48,6 +50,17 @@ export default function ReportPage() {
       const gm: Record<string, GanttDate> = {}
       for (const g of gd) gm[(g as GanttDate).item_id] = g as GanttDate
       setGanttMap(gm)
+      // Load sub_items
+      const aItems = (it as any[]).filter((i:any) => i.group_type === 'A').map((i:any) => i.id)
+      if (aItems.length > 0) {
+        const { data: subs } = await supabase.from('sub_items').select('*').in('item_id', aItems).order('sort_order')
+        const subMap: Record<string, any[]> = {}
+        for (const s of subs ?? []) {
+          if (!subMap[s.item_id]) subMap[s.item_id] = []
+          subMap[s.item_id].push(s)
+        }
+        setSubItems(subMap)
+      }
       setLoading(false)
     }
     load()
@@ -118,7 +131,20 @@ export default function ReportPage() {
         return s <= nextSun && e >= nextMon
       }
     })
-    return { list, label }
+    // Thêm vật tư phụ của các hạng mục A trong tuần tới
+    const subList: any[] = []
+    list.forEach((it: any) => {
+      if (it.group_type !== 'A') return
+      const g = ganttMap[it.id]
+      const endDate = g?.actual_end || g?.plan_end
+      const subs = subItems[it.id] ?? []
+      subs.forEach((sub: any) => {
+        if (!sub.is_done) {
+          subList.push({ ...sub, _parentItem: it, _endDate: endDate })
+        }
+      })
+    })
+    return { list, subList, label }
   }
 
   const fmtD = (d?: string|null) => d
@@ -404,14 +430,14 @@ export default function ReportPage() {
             {/* Kế hoạch tuần tới - TỰ ĐỘNG */}
             <div style={{ marginBottom:12 }}>
               {(() => {
-                const { list: nxItems, label: nxLabel } = getNextWeekItems()
+                const { list: nxItems, subList: nxSubList, label: nxLabel } = getNextWeekItems()
                 return (
                   <>
                     <div style={{ fontSize:11, fontWeight:700,
                       color: printMode ? '#0d1b3e' : '#c0d0ef', marginBottom:5 }}>
                       📋 Kế hoạch tuần tới — {nxLabel}
                     </div>
-                    {nxItems.length > 0 ? (
+                    {(nxItems.length > 0 || nxSubList.length > 0) ? (
                       <div style={{ borderRadius:8, overflow:'hidden',
                         border: printMode ? '1px solid #ccc' : '1px solid #ffffff10',
                         marginBottom:8 }}>
@@ -485,7 +511,55 @@ export default function ReportPage() {
                         border:'1px solid #ffffff10', marginBottom:8 }}>
                         {Object.keys(ganttMap).length === 0
                           ? '💡 Nhập ngày kế hoạch tại tab Tiến độ để tự động hiển thị'
-                          : '✅ Không có hạng mục nào bắt đầu trong tuần tới'}
+                          : '✅ Không có hạng mục nào trong tuần tới'}
+                      </div>
+                    )}
+                    {/* Vật tư phụ */}
+                    {nxSubList.length > 0 && (
+                      <div style={{ marginTop:8 }}>
+                        <div style={{ display:'flex', alignItems:'center',
+                          justifyContent:'space-between', marginBottom:5 }}>
+                          <div style={{ fontSize:10, fontWeight:700, color:'#c0d0ef' }}>
+                            📦 Vật tư phụ cần chuẩn bị ({nxSubList.length})
+                          </div>
+                          <button onClick={() => setExpandedSub(p => ({ ...p, next: !p.next }))}
+                            style={{ fontSize:9, padding:'2px 8px', borderRadius:6,
+                              background:'#1a2d5a', border:'1px solid #ffffff20',
+                              color:'#8899bb', cursor:'pointer', fontFamily:'inherit' }}>
+                            {expandedSub.next ? '▲ Thu gọn' : '▼ Mở rộng'}
+                          </button>
+                        </div>
+                        {expandedSub.next && (
+                          <div style={{ borderRadius:8, overflow:'hidden', border:'1px solid #ffffff10' }}>
+                            <div style={{ display:'grid', gridTemplateColumns:'1fr 100px 60px',
+                              padding:'5px 10px', background:'#1a2d5a',
+                              fontSize:9, fontWeight:600, color:'#8899bb', gap:4 }}>
+                              <span>Vật tư phụ</span>
+                              <span style={{ textAlign:'center' }}>Hạng mục cha</span>
+                              <span style={{ textAlign:'center' }}>Ngày cần</span>
+                            </div>
+                            {nxSubList.map((sub: any, idx: number) => {
+                              const label = `${sub.name}${sub.quantity ? ` (${sub.quantity}${sub.unit ? ' '+sub.unit : ''})` : ''}`
+                              const z = zones.find(zn => zn.id === sub._parentItem?.zone_id)
+                              return (
+                                <div key={sub.id} style={{ display:'grid',
+                                  gridTemplateColumns:'1fr 100px 60px',
+                                  padding:'5px 10px', gap:4, alignItems:'center',
+                                  background: idx%2===0 ? '#ffffff08' : 'transparent',
+                                  borderTop:'1px solid #ffffff08' }}>
+                                  <span style={{ fontSize:10, color:'#c8d8f0' }}>{label}</span>
+                                  <span style={{ fontSize:9, color:z?.color, textAlign:'center',
+                                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                    {sub._parentItem?.name}
+                                  </span>
+                                  <span style={{ fontSize:9, color:'#60a5fa', textAlign:'center' }}>
+                                    {sub._endDate ? new Date(sub._endDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : '—'}
+                                  </span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
                     <textarea value={plan} onChange={e => setPlan(e.target.value)}
