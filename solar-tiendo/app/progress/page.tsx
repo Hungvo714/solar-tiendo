@@ -388,13 +388,16 @@ export default function ProgressPage() {
                 background:'#fbbf2410', border:'1px solid #fbbf2430' }}>
                 <span style={{ fontSize:10, color:'#fbbf24' }}>⏱️ Thời gian đặt hàng:</span>
                 <input type="number" min="1" max="90"
-                  defaultValue={(item as any).order_days ?? 7}
-                  onBlur={async e => {
-                    const days = parseInt(e.target.value) || 7
-                    await supabase.from('items').update({ order_days: days }).eq('id', item.id)
+                  value={(item as any).order_days ?? 7}
+                  onChange={e => {
+                    const days = parseInt(e.target.value) || 1
                     setItems(prev => prev.map(it =>
                       it.id === item.id ? { ...it, order_days: days } as any : it
                     ))
+                  }}
+                  onBlur={async e => {
+                    const days = parseInt(e.target.value) || 7
+                    await supabase.from('items').update({ order_days: days }).eq('id', item.id)
                     // Tự động tính lại BD KH nếu đã có HT KH
                     const g = ganttMap[item.id] as any
                     const htKH = g?.plan_end
