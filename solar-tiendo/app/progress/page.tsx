@@ -73,6 +73,19 @@ export default function ProgressPage() {
     load()
   }, [])
 
+  async function toggleSubItem(itemId: string, subId: string, isDone: boolean) {
+    const now = new Date().toISOString()
+    await supabase.from('sub_items').update({
+      is_done: !isDone, done_at: !isDone ? now : null
+    }).eq('id', subId)
+    setSubItems(prev => ({
+      ...prev,
+      [itemId]: (prev[itemId] ?? []).map(s =>
+        s.id === subId ? { ...s, is_done: !isDone, done_at: !isDone ? now : null } : s
+      )
+    }))
+  }
+
   async function saveSubItem(itemId: string, sub: any) {
     if (sub.id) {
       await supabase.from('sub_items').update(sub).eq('id', sub.id)
@@ -308,39 +321,49 @@ export default function ProgressPage() {
                   </div>
                 ) : (
                   <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-                    {/* Header */}
-                    <div style={{ display:'grid', gridTemplateColumns:'1fr 60px 50px 70px',
-                      padding:'4px 8px', fontSize:9, fontWeight:600, color:'#8899bb', gap:4 }}>
-                      <span>Tên vật tư</span>
-                      <span style={{ textAlign:'center' }}>ĐVT</span>
-                      <span style={{ textAlign:'center' }}>SL</span>
-                      <span style={{ textAlign:'center' }}>Ngày cần</span>
-                    </div>
-                    {(subItems[item.id] ?? []).map((sub: any) => (
-                      <div key={sub.id} style={{ display:'grid',
-                        gridTemplateColumns:'1fr 60px 50px 70px',
-                        padding:'5px 8px', borderRadius:6, gap:4, alignItems:'center',
-                        background:'#ffffff08', border:'1px solid #ffffff08' }}>
-                        <span style={{ fontSize:10, color:'#c8d8f0' }}>{sub.name}</span>
-                        <span style={{ fontSize:9, color:'#8899bb', textAlign:'center' }}>{sub.unit || '—'}</span>
-                        <span style={{ fontSize:9, color:'#8899bb', textAlign:'center' }}>{sub.quantity || '—'}</span>
-                        <span style={{ fontSize:9, color:'#60a5fa', textAlign:'center' }}>
-                          {sub.need_date ? new Date(sub.need_date).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : '—'}
-                        </span>
-                        {!isViewer && (
-                          <div style={{ display:'flex', gap:4, gridColumn:'1/-1', justifyContent:'flex-end' }}>
-                            <button onClick={() => setEditSubItem({ itemId: item.id, sub })}
-                              style={{ fontSize:9, padding:'1px 6px', borderRadius:5, cursor:'pointer',
-                                background:'transparent', border:'1px solid #ffffff20', color:'#8899bb',
-                                fontFamily:'inherit' }}>✏️</button>
-                            <button onClick={() => deleteSubItem(item.id, sub.id)}
-                              style={{ fontSize:9, padding:'1px 6px', borderRadius:5, cursor:'pointer',
-                                background:'transparent', border:'1px solid #ff444420', color:'#ff8888',
-                                fontFamily:'inherit' }}>🗑️</button>
+                    {(subItems[item.id] ?? []).map((sub: any) => {
+                      const g = ganttMap[item.id] as any
+                      const needDate = g?.actual_end || g?.plan_end
+                      const subLabel = `${sub.name}${sub.quantity ? ` (${sub.quantity}${sub.unit ? ' '+sub.unit : ''})` : ''}`
+                      return (
+                        <div key={sub.id} style={{ display:'flex', alignItems:'center', gap:8,
+                          padding:'6px 9px', borderRadius:7,
+                          background: sub.is_done ? '#1a3a1a' : '#ffffff06',
+                          border:'1px solid #ffffff08' }}>
+                          <div onClick={() => !isViewer && toggleSubItem(item.id, sub.id, sub.is_done)}
+                            style={{ width:16, height:16, borderRadius:4, flexShrink:0,
+                              cursor: isViewer ? 'not-allowed' : 'pointer',
+                              border:`1.5px solid ${sub.is_done ? '#4ade80' : '#8899bb'}`,
+                              background: sub.is_done ? '#1a3a1a' : 'transparent',
+                              display:'flex', alignItems:'center', justifyContent:'center',
+                              fontSize:10, color:'#4ade80' }}>
+                            {sub.is_done && '✓'}
                           </div>
-                        )}
-                      </div>
-                    ))}
+                          <span style={{ flex:1, fontSize:11,
+                            color: sub.is_done ? '#8899bb' : '#c0d0ef',
+                            textDecoration: sub.is_done ? 'line-through' : 'none' }}>
+                            {subLabel}
+                          </span>
+                          {needDate && (
+                            <span style={{ fontSize:9, color:'#60a5fa', flexShrink:0 }}>
+                              {new Date(needDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}
+                            </span>
+                          )}
+                          {!isViewer && (
+                            <>
+                              <button onClick={() => setEditSubItem({ itemId: item.id, sub })}
+                                style={{ fontSize:9, padding:'1px 5px', borderRadius:5, cursor:'pointer',
+                                  background:'transparent', border:'1px solid #ffffff15', color:'#8899bb',
+                                  fontFamily:'inherit' }}>✏️</button>
+                              <button onClick={() => deleteSubItem(item.id, sub.id)}
+                                style={{ fontSize:9, padding:'1px 5px', borderRadius:5, cursor:'pointer',
+                                  background:'transparent', border:'1px solid #ff444415', color:'#ff8888',
+                                  fontFamily:'inherit' }}>🗑️</button>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -403,7 +426,6 @@ export default function ProgressPage() {
     const [name,     setName]     = useState(editSubItem?.sub?.name ?? '')
     const [unit,     setUnit]     = useState(editSubItem?.sub?.unit ?? '')
     const [quantity, setQty]      = useState(editSubItem?.sub?.quantity ?? '')
-    const [needDate, setNeedDate] = useState(editSubItem?.sub?.need_date ?? '')
     const [note,     setNote]     = useState(editSubItem?.sub?.note ?? '')
     if (!editSubItem) return null
     return (
@@ -418,7 +440,6 @@ export default function ProgressPage() {
             ['Tên vật tư *', name, setName, 'text', 'VD: Bu lông M10'],
             ['Đơn vị tính', unit, setUnit, 'text', 'VD: cái, kg, m...'],
             ['Số lượng', quantity, setQty, 'number', '0'],
-            ['Ngày cần', needDate, setNeedDate, 'date', ''],
             ['Ghi chú', note, setNote, 'text', ''],
           ].map(([label, val, setter, type, ph]) => (
             <div key={label as string} style={{ marginBottom:10 }}>
