@@ -206,17 +206,37 @@ export default function ProgressPage() {
                   <div key={field} style={{ display:'flex', flexDirection:'column', gap:3, flex:1, minWidth:130 }}>
                     <label style={{ fontSize:10, color:'#8899bb' }}>{label}</label>
                     <input type="date" value={val}
-                      min={isViewer ? undefined : min}
-                      max={isViewer ? undefined : max}
+                      min={isViewer ? undefined : (isStart ? min : (ganttMap[item.id] as any)?.plan_start || (ganttMap[item.id] as any)?.actual_start || min)}
+                      max={isViewer ? undefined : (isEnd ? (max || undefined) : undefined)}
                       readOnly={isViewer}
                       onChange={e => {
                         if (isViewer) return
                         const v = e.target.value
-                        if (min && v && v < min) {
+                        const g = ganttMap[item.id] as any
+                        // Kiểm tra ngày BD không được sau ngày HT
+                        if (field === 'plan_start' && g?.plan_end && v > g.plan_end) {
+                          alert('⚠️ Ngày BD kế hoạch không được sau ngày HT kế hoạch!')
+                          return
+                        }
+                        if (field === 'actual_start' && g?.actual_end && v > g.actual_end) {
+                          alert('⚠️ Ngày BD thực tế không được sau ngày HT thực tế!')
+                          return
+                        }
+                        // Kiểm tra ngày HT không được trước ngày BD
+                        if (field === 'plan_end' && g?.plan_start && v < g.plan_start) {
+                          alert('⚠️ Ngày HT kế hoạch không được trước ngày BD kế hoạch!')
+                          return
+                        }
+                        if (field === 'actual_end' && g?.actual_start && v < g.actual_start) {
+                          alert('⚠️ Ngày HT thực tế không được trước ngày BD thực tế!')
+                          return
+                        }
+                        // Kiểm tra điều kiện hạng mục
+                        if (isStart && min && v && v < min) {
                           alert('⚠️ Ngày bắt đầu phải từ ' + new Date(min).toLocaleDateString('vi-VN') + ' trở đi')
                           return
                         }
-                        if (max && v && v > max) {
+                        if (isEnd && max && v && v > max) {
                           alert('⚠️ Ngày kết thúc không được sau ' + new Date(max).toLocaleDateString('vi-VN'))
                           return
                         }
