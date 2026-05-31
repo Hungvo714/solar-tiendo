@@ -174,66 +174,82 @@ export default function PublicViewPage() {
         <div style={{ fontSize:12, fontWeight:700, color:'#c0d0ef', marginBottom:8 }}>
           📋 Tiến độ từng hạng mục
         </div>
-        <div style={{ borderRadius:8, border:'1px solid #ffffff10',
-          overflowX:'auto', WebkitOverflowScrolling:'touch' as any }}>
-          <div style={{ minWidth:520 }}>
-            {/* Header */}
-            <div style={{ display:'grid', gridTemplateColumns:'28px 2fr 55px 40px 48px 48px 70px',
-              padding:'7px 10px', background:'#1a2d5a',
-              fontSize:9, fontWeight:600, color:'#8899bb', gap:4 }}>
-              <span>#</span>
-              <span>Hạng mục</span>
-              <span>Khu vực</span>
-              <span style={{ textAlign:'center' }}>%</span>
-              <span style={{ textAlign:'center' }}>BD KH</span>
-              <span style={{ textAlign:'center' }}>HT KH</span>
-              <span style={{ textAlign:'center' }}>Trạng thái</span>
-            </div>
-            {/* Rows */}
-            {items.map((it, idx) => {
-              const pct = itemPct(it, progressMap)
-              const z   = zones.find(zn => zn.id === it.zone_id)
-              const g   = ganttMap[it.id]
-              const st  = statusOf(pct)
-              return (
-                <div key={it.id} style={{ display:'grid',
-                  gridTemplateColumns:'28px 2fr 55px 40px 48px 48px 70px',
-                  padding:'6px 10px', gap:4, alignItems:'start',
-                  background: idx%2===0 ? (z ? z.light+'18':'#ffffff08') : 'transparent',
-                  borderTop:'1px solid #ffffff08' }}>
-                  <span style={{ fontSize:10, fontWeight:700, color:'#8899bb' }}>{it.stt}</span>
-                  <span style={{ fontSize:11, color:'#c8d8f0',
-                    wordBreak:'break-word' as any, lineHeight:1.4 }}>{it.name}</span>
-                  <span style={{ fontSize:9, color:z?.color,
-                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{z?.label}</span>
-                  <span style={{ fontSize:10, fontFamily:'monospace', textAlign:'center', fontWeight:700,
-                    color: pct>=1?'#4ade80':pct>0?'#fbbf24':'#8899bb' }}>{fp(pct)}</span>
-                  <span style={{ fontSize:9, color:'#8899bb', textAlign:'center' }}>{fmtD(g?.plan_start)}</span>
-                  <span style={{ fontSize:9, color:'#60a5fa', textAlign:'center' }}>{fmtD(g?.plan_end)}</span>
-                  <span style={{ fontSize:9, textAlign:'center',
-                    color: pct>=1?'#4ade80':pct>0?'#fbbf24':'#8899bb' }}>{st.l}</span>
-                </div>
-              )
-            })}
-            {/* Tổng */}
-            <div style={{ display:'grid', gridTemplateColumns:'28px 2fr 55px 40px 48px 48px 70px',
-              padding:'8px 10px', gap:4, alignItems:'center',
-              background:'#1a2d5a', borderTop:'2px solid #4472C4' }}>
-              <span/>
-              <span style={{ fontSize:11, fontWeight:700, color:'#e8eaf0' }}>TỔNG TIẾN ĐỘ</span>
-              <span/><span/>
-              <span style={{ fontSize:14, fontFamily:'monospace', fontWeight:700,
-                textAlign:'center', color:'#F5A623', gridColumn:'4/5' }}>{fp(tp)}</span>
-              <span/>
-              <span style={{ fontSize:9, textAlign:'center',
-                color: tp>=1?'#4ade80':tp>0?'#fbbf24':'#8899bb' }}>
-                {tp>=1?'✅ Xong':tp>0?'🔄 Đang TH':'⬜ Chưa'}
-              </span>
-            </div>
-          </div>
-        </div>
 
-        {/* Đang thực hiện */}
+        {[
+          { key:'A', label:'A. HẠNG MỤC VẬT TƯ',          color:'#E65100' },
+          { key:'B', label:'B. HẠNG MỤC THI CÔNG',          color:'#1565C0' },
+          { key:'C', label:'C. HẠNG MỤC ĐẤU NỐI VẬN HÀNH', color:'#2E7D32' },
+        ].map(group => {
+          const groupItems = items.filter((it:any) => it.group_type === group.key)
+          if (groupItems.length === 0) return null
+          return (
+            <div key={group.key} style={{ marginBottom:10 }}>
+              {/* Group header */}
+              <div style={{ padding:'6px 10px', background:`${group.color}22`,
+                border:`1px solid ${group.color}44`, borderRadius:'6px 6px 0 0',
+                fontSize:10, fontWeight:700, color:group.color }}>
+                {group.label}
+              </div>
+              {/* Table */}
+              <div style={{ borderRadius:'0 0 8px 8px', border:'1px solid #ffffff10',
+                borderTop:'none', overflowX:'auto', WebkitOverflowScrolling:'touch' as any }}>
+                <div style={{ minWidth:520 }}>
+                  {/* Header */}
+                  <div style={{ display:'grid', gridTemplateColumns:'28px 2fr 65px 55px 55px 55px 80px',
+                    padding:'7px 10px', background:'#1a2d5a',
+                    fontSize:9, fontWeight:600, color:'#8899bb', gap:4 }}>
+                    <span>#</span><span>Hạng mục</span><span>Khu vực</span>
+                    <span style={{ textAlign:'center' }}>%</span>
+                    <span style={{ textAlign:'center' }}>BD KH</span>
+                    <span style={{ textAlign:'center' }}>HT KH</span>
+                    <span style={{ textAlign:'center' }}>Trạng thái</span>
+                  </div>
+                  {/* Rows */}
+                  {groupItems.map((it:any, idx:number) => {
+                    const pct = itemPct(it, progressMap)
+                    const z   = zones.find(zn => zn.id === it.zone_id)
+                    const g   = ganttMap[it.id]
+                    const st  = statusOf(pct)
+                    return (
+                      <div key={it.id} style={{ display:'grid',
+                        gridTemplateColumns:'28px 2fr 65px 55px 55px 55px 80px',
+                        padding:'6px 10px', gap:4, alignItems:'start',
+                        background: idx%2===0 ? (z ? z.light+'18':'#ffffff08') : 'transparent',
+                        borderTop:'1px solid #ffffff08' }}>
+                        <span style={{ fontSize:10, fontWeight:700, color:'#8899bb' }}>{it.stt}</span>
+                        <span style={{ fontSize:11, color:'#c8d8f0',
+                          wordBreak:'break-word' as any, lineHeight:1.4 }}>{it.name}</span>
+                        <span style={{ fontSize:9, color:z?.color,
+                          overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{z?.label}</span>
+                        <span style={{ fontSize:10, fontFamily:'monospace', textAlign:'center', fontWeight:700,
+                          color: pct>=1?'#4ade80':pct>0?'#fbbf24':'#8899bb' }}>{fp(pct)}</span>
+                        <span style={{ fontSize:9, color:'#8899bb', textAlign:'center' }}>{fmtD(g?.plan_start)}</span>
+                        <span style={{ fontSize:9, color:'#60a5fa', textAlign:'center' }}>{fmtD(g?.plan_end)}</span>
+                        <span style={{ fontSize:9, textAlign:'center',
+                          color: pct>=1?'#4ade80':pct>0?'#fbbf24':'#8899bb' }}>{st.l}</span>
+                      </div>
+                    )
+                  })}
+                  {/* Tổng nhóm */}
+                  <div style={{ display:'grid', gridTemplateColumns:'28px 2fr 65px 55px 55px 55px 80px',
+                    padding:'6px 10px', gap:4, alignItems:'center',
+                    background:`${group.color}22`, borderTop:`1px solid ${group.color}44` }}>
+                    <span/><span style={{ fontSize:10, fontWeight:700, color:group.color }}>Tổng nhóm</span>
+                    <span/>
+                    <span style={{ fontSize:11, fontFamily:'monospace', textAlign:'center',
+                      fontWeight:700, color:group.color }}>
+                      {fp(groupItems.reduce((s:number,it:any)=>s+itemPct(it,progressMap)*it.weight,0)/
+                         groupItems.reduce((s:number,it:any)=>s+it.weight,0))}
+                    </span>
+                    <span/><span/><span/>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+
+                {/* Đang thực hiện */}
         {doingItems.length > 0 && (
           <div style={{ marginTop:14 }}>
             <div style={{ fontSize:12, fontWeight:700, color:'#c0d0ef', marginBottom:8,
