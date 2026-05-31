@@ -70,6 +70,10 @@ export default function ReportPage() {
 
   function getSchedStatus(item: Item) {
     const g = ganttMap[item.id]
+    // Check N/A
+    const steps = (item as any).steps ?? []
+    const allNA = steps.length > 0 && steps.every((s: any) => !!progressMap[s.id]?.is_na)
+    if (allNA) return { label:'➖ N/A', color:'#8899bb' }
     if (!g?.plan_end) return null
     const pct = itemPct(item, progressMap)
     const planEnd = new Date(g.plan_end)
