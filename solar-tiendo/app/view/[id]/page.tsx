@@ -128,7 +128,7 @@ export default function PublicViewPage() {
           {/* Trái: % tiến độ */}
           <div style={{ flex:1, minWidth:140 }}>
             <div style={{ fontSize:10, color:'#8899bb', marginBottom:4 }}>TỔNG TIẾN ĐỘ DỰ ÁN</div>
-            <div style={{ fontFamily:'monospace', fontSize:40, fontWeight:700,
+            <div style={{ fontFamily:'monospace', fontSize:36, fontWeight:700,
               color:'#F5A623', lineHeight:1 }}>{fp(tp)}</div>
             <div style={{ fontSize:10, color:'#8899bb', marginTop:6 }}>
               Ngày {el}/{total} · Còn {Math.max(0, total-el)} ngày
@@ -139,30 +139,54 @@ export default function PublicViewPage() {
                 background:'linear-gradient(90deg,#F5A623,#ff8c00)', borderRadius:3 }}/>
             </div>
           </div>
-          {/* Phải: Thông tin dự án */}
-          <div style={{ display:'flex', flexDirection:'column', gap:6,
-            borderLeft:'1px solid #ffffff15', paddingLeft:16, minWidth:160 }}>
-            <div>
-              <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>DỰ ÁN</div>
-              <div style={{ fontSize:11, fontWeight:600, color:'#e8eaf0' }}>{project?.name}</div>
-            </div>
-            <div>
-              <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>CHỦ ĐẦU TƯ</div>
-              <div style={{ fontSize:11, color:'#c8d8f0' }}>{project?.client}</div>
-            </div>
-            <div>
-              <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>NHÀ THẦU</div>
-              <div style={{ fontSize:11, color:'#c8d8f0' }}>{project?.contractor}</div>
-            </div>
-            {(project as any)?.location && (
+          {/* Phải: Thông tin dự án + vòng tròn % */}
+          <div style={{ display:'flex', gap:16, alignItems:'center',
+            borderLeft:'1px solid #ffffff15', paddingLeft:16 }}>
+            {/* Vòng tròn tiến độ */}
+            {(() => {
+              const circ = 2*Math.PI*28, dash = circ*tp
+              return (
+                <svg width="64" height="64" style={{ transform:'rotate(-90deg)', flexShrink:0 }}>
+                  <circle cx="32" cy="32" r="28" fill="none" stroke="#ffffff15" strokeWidth="6"/>
+                  <circle cx="32" cy="32" r="28" fill="none" stroke="#F5A623" strokeWidth="6"
+                    strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"/>
+                  <text x="32" y="32" fill="#F5A623" fontFamily="monospace"
+                    fontSize="11" fontWeight="700"
+                    textAnchor="middle" dominantBaseline="central"
+                    style={{ transform:'rotate(90deg)', transformBox:'fill-box' }}>
+                    {Math.round(tp*100)}%
+                  </text>
+                </svg>
+              )
+            })()}
+            {/* Thông tin - 2 cột */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px 16px' }}>
               <div>
-                <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>NHÀ MÁY</div>
-                <div style={{ fontSize:11, color:'#c8d8f0' }}>{(project as any).location}</div>
+                <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>DỰ ÁN</div>
+                <div style={{ fontSize:11, fontWeight:600, color:'#e8eaf0',
+                  wordBreak:'break-word' as any }}>{project?.name}</div>
               </div>
-            )}
-            <div>
-              <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>NGÀY CẬP NHẬT</div>
-              <div style={{ fontSize:11, color:'#60a5fa' }}>{today}</div>
+              {(project as any)?.location && (
+                <div>
+                  <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>NHÀ MÁY</div>
+                  <div style={{ fontSize:11, color:'#c8d8f0',
+                    wordBreak:'break-word' as any }}>{(project as any).location}</div>
+                </div>
+              )}
+              <div>
+                <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>CHỦ ĐẦU TƯ</div>
+                <div style={{ fontSize:11, color:'#c8d8f0',
+                  wordBreak:'break-word' as any }}>{project?.client}</div>
+              </div>
+              <div>
+                <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>NHÀ THẦU</div>
+                <div style={{ fontSize:11, color:'#c8d8f0',
+                  wordBreak:'break-word' as any }}>{project?.contractor}</div>
+              </div>
+              <div>
+                <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>CẬP NHẬT</div>
+                <div style={{ fontSize:11, color:'#60a5fa' }}>{today}</div>
+              </div>
             </div>
           </div>
         </div>
