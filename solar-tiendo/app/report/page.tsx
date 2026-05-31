@@ -304,10 +304,11 @@ export default function ReportPage() {
               gap:10, marginBottom:14 }}>
               <div>
                 <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:4 }}>Tuần số</label>
-                <input value={weekNum} onChange={e => setWeekNum(e.target.value)}
-                  style={{ width:'100%', background:'#0a0f1e', border:'1px solid #ffffff20',
-                    borderRadius:7, padding:'7px 10px', color:'#e8eaf0',
-                    fontFamily:'inherit', fontSize:12, outline:'none' }}/>
+                <div style={{ width:'100%', background:'#0a0f1e', border:'1px solid #ffffff15',
+                  borderRadius:7, padding:'7px 10px', color:'#F5A623',
+                  fontFamily:'monospace', fontSize:14, fontWeight:700 }}>
+                  Tuần {weekNum}
+                </div>
               </div>
               <div>
                 <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:4 }}>Người lập báo cáo</label>
@@ -600,7 +601,11 @@ export default function ReportPage() {
 
             {/* Sign */}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:16 }}>
-              {['Người lập báo cáo','Giám sát trưởng','Chủ đầu tư xác nhận'].map(r => (
+              {[
+                reporter ? `Người lập báo cáo: ${reporter}` : 'Người lập báo cáo',
+                'Giám sát trưởng',
+                'Chủ đầu tư xác nhận'
+              ].map(r => (
                 <div key={r} style={{
                   border: printMode ? '1px solid #ccc' : '1px dashed #ffffff20',
                   borderRadius:7, padding:10, textAlign:'center' }}>
