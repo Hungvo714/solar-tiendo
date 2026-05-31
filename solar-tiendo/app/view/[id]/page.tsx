@@ -154,6 +154,12 @@ export default function PublicViewPage() {
               <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>NHÀ THẦU</div>
               <div style={{ fontSize:11, color:'#c8d8f0' }}>{project?.contractor}</div>
             </div>
+            {(project as any)?.location && (
+              <div>
+                <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>NHÀ MÁY</div>
+                <div style={{ fontSize:11, color:'#c8d8f0' }}>{(project as any).location}</div>
+              </div>
+            )}
             <div>
               <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>NGÀY CẬP NHẬT</div>
               <div style={{ fontSize:11, color:'#60a5fa' }}>{today}</div>
