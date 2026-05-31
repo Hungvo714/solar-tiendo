@@ -375,7 +375,7 @@ export default function ProgressPage() {
                           alert('⚠️ Ngày kết thúc không được sau ' + new Date(max).toLocaleDateString('vi-VN'))
                           return
                         }
-                        updateGantt(item.id, field, v)
+                        updateGanttSmart(item, field, v)
                       }}
                       style={{ background:'#0a0f1e', border:`1px solid ${z?.color ?? '#ffffff20'}`,
                         borderRadius:5, padding:'5px 8px', color:'#60a5fa',
