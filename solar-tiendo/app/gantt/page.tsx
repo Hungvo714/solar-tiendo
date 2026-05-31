@@ -55,6 +55,15 @@ export default function GanttPage() {
     window.location.href = `${path}?project=${projectId}`
   }
 
+  const total     = project?.total_days ?? 60
+  const startDate = project?.start_date ?? new Date().toISOString().split('T')[0]
+  const el        = elapsedDays(startDate)
+  const todayPct  = Math.min(100, (el / total) * 100)
+  const endDate   = new Date(new Date(startDate).getTime() + total * 86400000)
+    .toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})
+  const NAME_W    = isMobile ? 130 : 200
+  const TIMELINE_W = isMobile ? 600 : undefined
+
   function barPos(g: GanttDate | undefined, sf: string, ef: string) {
     const s = (g as any)?.[sf], e = (g as any)?.[ef]
     if (!s || !e) return null
@@ -64,15 +73,6 @@ export default function GanttPage() {
     if (end <= left) return null
     return { left: (left / total) * 100, width: ((end - left) / total) * 100 }
   }
-
-  const total     = project?.total_days ?? 60
-  const startDate = project?.start_date ?? new Date().toISOString().split('T')[0]
-  const el        = elapsedDays(startDate)
-  const todayPct  = Math.min(100, (el / total) * 100)
-  const endDate   = new Date(new Date(startDate).getTime() + total * 86400000)
-    .toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})
-  const NAME_W    = isMobile ? 130 : 200
-  const TIMELINE_W = isMobile ? 600 : undefined
 
   if (loading) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
