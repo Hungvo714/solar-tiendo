@@ -355,6 +355,71 @@ export default function ProgressPage() {
                 )
               })}
             </div>
+
+            {/* Sub Items - chỉ hiện cho nhóm A */}
+            {(item as any).group_type === 'A' && (
+              <div style={{ marginTop:10 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                  marginBottom:6, paddingTop:8, borderTop:'1px solid #ffffff10' }}>
+                  <span style={{ fontSize:10, fontWeight:600, color:'#c0d0ef' }}>📦 Vật tư phụ</span>
+                  {!isViewer && (
+                    <button onClick={() => setEditSubItem({ itemId: item.id })}
+                      style={{ fontSize:9, padding:'2px 8px', borderRadius:6, cursor:'pointer',
+                        background:'#1a2d5a', border:'1px solid #4472C4', color:'#60a5fa',
+                        fontFamily:'inherit' }}>+ Thêm</button>
+                  )}
+                </div>
+                {(subItems[item.id] ?? []).length === 0 ? (
+                  <div style={{ fontSize:10, color:'#ffffff30', fontStyle:'italic' }}>Chưa có vật tư phụ</div>
+                ) : (
+                  <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                    {(subItems[item.id] ?? []).map((sub: any) => {
+                      const g = ganttMap[item.id] as any
+                      const needDate = g?.actual_end || g?.plan_end
+                      const subLabel = `${sub.name}${sub.quantity ? ` (${sub.quantity}${sub.unit ? ' '+sub.unit : ''})` : ''}`
+                      return (
+                        <div key={sub.id} style={{ display:'flex', alignItems:'center', gap:8,
+                          padding:'6px 9px', borderRadius:7,
+                          background: sub.is_done ? '#1a3a1a' : '#ffffff06',
+                          border:'1px solid #ffffff08' }}>
+                          <div onClick={() => !isViewer && toggleSubItem(item.id, sub.id, sub.is_done)}
+                            style={{ width:16, height:16, borderRadius:4, flexShrink:0,
+                              cursor: isViewer ? 'not-allowed' : 'pointer',
+                              border:`1.5px solid ${sub.is_done ? '#4ade80' : '#8899bb'}`,
+                              background: sub.is_done ? '#1a3a1a' : 'transparent',
+                              display:'flex', alignItems:'center', justifyContent:'center',
+                              fontSize:10, color:'#4ade80' }}>
+                            {sub.is_done && '✓'}
+                          </div>
+                          <span style={{ flex:1, fontSize:11,
+                            color: sub.is_done ? '#8899bb' : '#c0d0ef',
+                            textDecoration: sub.is_done ? 'line-through' : 'none' }}>
+                            {subLabel}
+                          </span>
+                          {needDate && (
+                            <span style={{ fontSize:9, color:'#60a5fa', flexShrink:0 }}>
+                              {new Date(needDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}
+                            </span>
+                          )}
+                          {!isViewer && (
+                            <>
+                              <button onClick={() => setEditSubItem({ itemId: item.id, sub })}
+                                style={{ fontSize:9, padding:'1px 5px', borderRadius:5, cursor:'pointer',
+                                  background:'transparent', border:'1px solid #ffffff15', color:'#8899bb',
+                                  fontFamily:'inherit' }}>✏️</button>
+                              <button onClick={() => deleteSubItem(item.id, sub.id)}
+                                style={{ fontSize:9, padding:'1px 5px', borderRadius:5, cursor:'pointer',
+                                  background:'transparent', border:'1px solid #ff444415', color:'#ff8888',
+                                  fontFamily:'inherit' }}>🗑️</button>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -409,146 +474,12 @@ export default function ProgressPage() {
                 fontFamily:'inherit', fontSize:12, fontWeight:600,
                 cursor: name ? 'pointer' : 'not-allowed' }}>
               💾 Lưu
-            </button>            {(item as any).group_type === 'A' && (
-              <div style={{ marginBottom:10 }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-                  <span style={{ fontSize:10, fontWeight:600, color:'#c0d0ef' }}>📦 Vật tư phụ</span>
-                  {!isViewer && (
-                    <button onClick={() => setEditSubItem({ itemId: item.id })}
-                      style={{ fontSize:9, padding:'2px 8px', borderRadius:6, cursor:'pointer',
-                        background:'#1a2d5a', border:'1px solid #4472C4', color:'#60a5fa',
-                        fontFamily:'inherit' }}>
-                      + Thêm
-                    </button>
-                  )}
-                </div>
-                {(subItems[item.id] ?? []).length === 0 ? (
-                  <div style={{ fontSize:10, color:'#ffffff30', fontStyle:'italic', padding:'4px 0' }}>
-                    Chưa có vật tư phụ
-                  </div>
-                ) : (
-                  <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-                    {(subItems[item.id] ?? []).map((sub: any) => {
-                      const g = ganttMap[item.id] as any
-                      const needDate = g?.actual_end || g?.plan_end
-                      const subLabel = `${sub.name}${sub.quantity ? ` (${sub.quantity}${sub.unit ? ' '+sub.unit : ''})` : ''}`
-                      return (
-                        <div key={sub.id} style={{ display:'flex', alignItems:'center', gap:8,
-                          padding:'6px 9px', borderRadius:7,
-                          background: sub.is_done ? '#1a3a1a' : '#ffffff06',
-                          border:'1px solid #ffffff08' }}>
-                          <div onClick={() => !isViewer && toggleSubItem(item.id, sub.id, sub.is_done)}
-                            style={{ width:16, height:16, borderRadius:4, flexShrink:0,
-                              cursor: isViewer ? 'not-allowed' : 'pointer',
-                              border:`1.5px solid ${sub.is_done ? '#4ade80' : '#8899bb'}`,
-                              background: sub.is_done ? '#1a3a1a' : 'transparent',
-                              display:'flex', alignItems:'center', justifyContent:'center',
-                              fontSize:10, color:'#4ade80' }}>
-                            {sub.is_done && '✓'}
-                          </div>
-                          <span style={{ flex:1, fontSize:11,
-                            color: sub.is_done ? '#8899bb' : '#c0d0ef',
-                            textDecoration: sub.is_done ? 'line-through' : 'none' }}>
-                            {subLabel}
-                          </span>
-                          {needDate && (
-                            <span style={{ fontSize:9, color:'#60a5fa', flexShrink:0 }}>
-                              {new Date(needDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}
-                            </span>
-                          )}
-                          {!isViewer && (
-                            <>
-                              <button onClick={() => setEditSubItem({ itemId: item.id, sub })}
-                                style={{ fontSize:9, padding:'1px 5px', borderRadius:5, cursor:'pointer',
-                                  background:'transparent', border:'1px solid #ffffff15', color:'#8899bb',
-                                  fontFamily:'inherit' }}>✏️</button>
-                              <button onClick={() => deleteSubItem(item.id, sub.id)}
-                                style={{ fontSize:9, padding:'1px 5px', borderRadius:5, cursor:'pointer',
-                                  background:'transparent', border:'1px solid #ff444415', color:'#ff8888',
-                                  fontFamily:'inherit' }}>🗑️</button>
-                            </>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Sub Items - chỉ hiện cho nhóm A */}
-            {(item as any).group_type === 'A' && (
-              <div style={{ marginTop:10 }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-                  marginBottom:6, paddingTop:8, borderTop:'1px solid #ffffff10' }}>
-                  <span style={{ fontSize:10, fontWeight:600, color:'#c0d0ef' }}>📦 Vật tư phụ</span>
-                  {!isViewer && (
-                    <button onClick={() => setEditSubItem({ itemId: item.id })}
-                      style={{ fontSize:9, padding:'2px 8px', borderRadius:6, cursor:'pointer',
-                        background:'#1a2d5a', border:'1px solid #4472C4', color:'#60a5fa',
-                        fontFamily:'inherit' }}>
-                      + Thêm
-                    </button>
-                  )}
-                </div>
-                {(subItems[item.id] ?? []).length === 0 ? (
-                  <div style={{ fontSize:10, color:'#ffffff30', fontStyle:'italic', padding:'4px 0' }}>
-                    Chưa có vật tư phụ
-                  </div>
-                ) : (
-                  <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
-                    {(subItems[item.id] ?? []).map((sub: any) => {
-                      const g = ganttMap[item.id] as any
-                      const needDate = g?.actual_end || g?.plan_end
-                      const subLabel = `${sub.name}${sub.quantity ? ` (${sub.quantity}${sub.unit ? ' '+sub.unit : ''})` : ''}`
-                      return (
-                        <div key={sub.id} style={{ display:'flex', alignItems:'center', gap:8,
-                          padding:'6px 9px', borderRadius:7,
-                          background: sub.is_done ? '#1a3a1a' : '#ffffff06',
-                          border:'1px solid #ffffff08' }}>
-                          <div onClick={() => !isViewer && toggleSubItem(item.id, sub.id, sub.is_done)}
-                            style={{ width:16, height:16, borderRadius:4, flexShrink:0,
-                              cursor: isViewer ? 'not-allowed' : 'pointer',
-                              border:`1.5px solid ${sub.is_done ? '#4ade80' : '#8899bb'}`,
-                              background: sub.is_done ? '#1a3a1a' : 'transparent',
-                              display:'flex', alignItems:'center', justifyContent:'center',
-                              fontSize:10, color:'#4ade80' }}>
-                            {sub.is_done && '✓'}
-                          </div>
-                          <span style={{ flex:1, fontSize:11,
-                            color: sub.is_done ? '#8899bb' : '#c0d0ef',
-                            textDecoration: sub.is_done ? 'line-through' : 'none' }}>
-                            {subLabel}
-                          </span>
-                          {needDate && (
-                            <span style={{ fontSize:9, color:'#60a5fa', flexShrink:0 }}>
-                              {new Date(needDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}
-                            </span>
-                          )}
-                          {!isViewer && (
-                            <>
-                              <button onClick={() => setEditSubItem({ itemId: item.id, sub })}
-                                style={{ fontSize:9, padding:'1px 5px', borderRadius:5, cursor:'pointer',
-                                  background:'transparent', border:'1px solid #ffffff15', color:'#8899bb',
-                                  fontFamily:'inherit' }}>✏️</button>
-                              <button onClick={() => deleteSubItem(item.id, sub.id)}
-                                style={{ fontSize:9, padding:'1px 5px', borderRadius:5, cursor:'pointer',
-                                  background:'transparent', border:'1px solid #ff444415', color:'#ff8888',
-                                  fontFamily:'inherit' }}>🗑️</button>
-                            </>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
+            </button>
           </div>
         </div>
       </div>
     )
+  }
   }
 
   if (loading) return (
