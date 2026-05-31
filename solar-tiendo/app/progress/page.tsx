@@ -180,11 +180,15 @@ export default function ProgressPage() {
     const isTCStart = (field === 'plan_start' || field === 'actual_start')
       && item.group_type !== 'A'
 
-    console.log('updateGanttSmart:', item.stt, item.group_type, field, value, 'isTCStart:', isTCStart)
 
     if (isTCStart && value) {
       const vtDeps = dependencies.filter(d => d.item_stt === item.stt)
-      console.log('vtDeps:', vtDeps, 'dependencies length:', dependencies.length)
+      for (const dep of vtDeps) {
+        const vtItem = items.find(it => it.stt === dep.depends_on_stt && (it as any).group_type === 'A')
+        if (vtItem) {
+          const vtGantt = ganttMap[vtItem.id] as any
+        }
+      }
       for (const dep of vtDeps) {
         const vtItem = items.find(it => it.stt === dep.depends_on_stt && (it as any).group_type === 'A')
         if (!vtItem) continue
@@ -318,6 +322,14 @@ export default function ProgressPage() {
                     setItems(prev => prev.map(it =>
                       it.id === item.id ? { ...it, order_days: days } as any : it
                     ))
+                    // Tự động tính lại BD KH nếu đã có HT KH
+                    const g = ganttMap[item.id] as any
+                    const htKH = g?.plan_end
+                    if (htKH) {
+                      const newBD = new Date(new Date(htKH).getTime() - days * 86400000)
+                        .toISOString().split('T')[0]
+                      await updateGantt(item.id, 'plan_start', newBD)
+                    }
                   }}
                   style={{ width:50, background:'#0a0f1e', border:'1px solid #fbbf2440',
                     borderRadius:5, padding:'3px 6px', color:'#fbbf24',
