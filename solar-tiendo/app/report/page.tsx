@@ -414,14 +414,15 @@ export default function ReportPage() {
                       <div style={{ borderRadius:8, overflow:'hidden',
                         border: printMode ? '1px solid #ccc' : '1px solid #ffffff10',
                         marginBottom:8 }}>
-                        <div style={{ display:'grid', gridTemplateColumns:'1fr 70px 65px 65px',
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 60px 55px 55px 72px',
                           padding:'6px 10px',
                           background: '#1a2d5a',
-                          fontSize:9, fontWeight:600, color:'#8899bb', gap:6 }}>
+                          fontSize:9, fontWeight:600, color:'#8899bb', gap:4 }}>
                           <span>Hạng mục</span>
                           <span style={{ textAlign:'center' }}>Khu vực</span>
                           <span style={{ textAlign:'center' }}>BD KH</span>
                           <span style={{ textAlign:'center' }}>HT KH</span>
+                          <span style={{ textAlign:'center' }}>Trạng thái</span>
                         </div>
                         {[
                           { key:'A', label:'A. Vật tư',      color:'#E65100' },
@@ -459,11 +460,11 @@ export default function ReportPage() {
                                     </span>
                                     <span style={{ fontSize:9, textAlign:'center',
                                       color: printMode ? '#555' : '#8899bb' }}>
-                                      {fmtD(g?.actual_start || g?.plan_start)}
+                                      {fmtD(g?.plan_start)}
                                     </span>
                                     <span style={{ fontSize:9, textAlign:'center',
                                       color: printMode ? '#1a5fa5' : '#60a5fa' }}>
-                                      {fmtD(g?.actual_end || g?.plan_end)}
+                                      {fmtD(g?.plan_end)}
                                     </span>
                                     <span style={{ fontSize:9, textAlign:'center',
                                       color: isLate ? '#FF8888' : '#4ade80',
