@@ -139,7 +139,8 @@ export default function ReportPage() {
       const endDate = g?.actual_end || g?.plan_end
       const subs = subItems[it.id] ?? []
       subs.forEach((sub: any) => {
-        if (!sub.is_done) {
+        // Chỉ hiện vật tư phụ đã nhập số lượng và chưa hoàn thành
+        if (!sub.is_done && sub.quantity && sub.quantity > 0) {
           subList.push({ ...sub, _parentItem: it, _endDate: endDate })
         }
       })
