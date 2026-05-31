@@ -397,7 +397,12 @@ export default function ProgressPage() {
                   }}
                   onBlur={async e => {
                     const days = parseInt(e.target.value) || 7
-                    await supabase.from('items').update({ order_days: days }).eq('id', item.id)
+                    const { error } = await supabase.from('items').update({ order_days: days }).eq('id', item.id)
+                    if (error) { alert('Lỗi lưu: ' + error.message); return }
+                    // Cập nhật state
+                    setItems(prev => prev.map(it =>
+                      it.id === item.id ? { ...it, order_days: days } as any : it
+                    ))
                     // Tự động tính lại BD KH nếu đã có HT KH
                     const g = ganttMap[item.id] as any
                     const htKH = g?.plan_end
