@@ -124,8 +124,7 @@ export default function PublicViewPage() {
         <div style={{ background:'linear-gradient(135deg,#0d1b3e,#1a2d5a)',
           border:'1px solid #F5A623', borderRadius:12, padding:'14px 16px',
           marginBottom:12, display:'flex', alignItems:'center',
-          justifyContent:'space-between', gap:12, flexWrap:'wrap',
-          maxWidth:680 }}>
+          justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
           {/* Trái: % tiến độ */}
           <div style={{ flex:1, minWidth:140 }}>
             <div style={{ fontSize:10, color:'#8899bb', marginBottom:4 }}>TỔNG TIẾN ĐỘ DỰ ÁN</div>
