@@ -65,24 +65,21 @@ export default function GanttPage() {
     return { left: (left / total) * 100, width: ((end - left) / total) * 100 }
   }
 
-  if (loading) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
-      height:'100vh', background:'#0a0f1e', color:'#8899bb', flexDirection:'column', gap:8 }}>
-      <div style={{ fontSize:28 }}>📅</div><div>Đang tải Gantt...</div>
-    </div>
-  )
-
   const total     = project?.total_days ?? 60
   const startDate = project?.start_date ?? new Date().toISOString().split('T')[0]
   const el        = elapsedDays(startDate)
   const todayPct  = Math.min(100, (el / total) * 100)
   const endDate   = new Date(new Date(startDate).getTime() + total * 86400000)
     .toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})
-
-  // Cột tên: 140px mobile, 200px desktop
-  const NAME_W = isMobile ? 130 : 200
-  // Timeline tối thiểu 400px để cuộn được
+  const NAME_W    = isMobile ? 130 : 200
   const TIMELINE_W = isMobile ? 600 : undefined
+
+  if (loading) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+      height:'100vh', background:'#0a0f1e', color:'#8899bb', flexDirection:'column', gap:8 }}>
+      <div style={{ fontSize:28 }}>📅</div><div>Đang tải Gantt...</div>
+    </div>
+  )
 
   return (
     <div style={{ display:'flex', flexDirection:'column', minHeight:'100vh',
