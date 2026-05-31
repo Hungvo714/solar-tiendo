@@ -206,7 +206,13 @@ export default function ProgressPage() {
                   <div key={field} style={{ display:'flex', flexDirection:'column', gap:3, flex:1, minWidth:130 }}>
                     <label style={{ fontSize:10, color:'#8899bb' }}>{label}</label>
                     <input type="date" value={val}
-                      min={isViewer ? undefined : (isStart ? min : (ganttMap[item.id] as any)?.plan_start || (ganttMap[item.id] as any)?.actual_start || min)}
+                      min={isViewer ? undefined : (
+                        field === 'plan_start' ? min :
+                        field === 'actual_start' ? min :
+                        field === 'plan_end' ? ((ganttMap[item.id] as any)?.plan_start || undefined) :
+                        field === 'actual_end' ? ((ganttMap[item.id] as any)?.actual_start || undefined) :
+                        undefined
+                      )}
                       max={isViewer ? undefined : (isEnd ? (max || undefined) : undefined)}
                       readOnly={isViewer}
                       onChange={e => {
