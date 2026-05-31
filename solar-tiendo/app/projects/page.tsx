@@ -25,7 +25,7 @@ export default function ProjectsPage() {
   const [isAdmin,   setIsAdmin]   = useState(false)
   const [newUserInfo, setNewUserInfo] = useState<{email:string,pass:string}|null>(null)
   const [form, setForm] = useState({
-    name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60'
+    name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60', location:'', location:''
   })
 
   useEffect(() => { loadProjects() }, [])
@@ -77,13 +77,14 @@ export default function ProjectsPage() {
         name: form.name, client: form.client, contractor: form.contractor,
         start_date: form.start_date || new Date().toISOString().split('T')[0],
         total_days: parseInt(form.total_days) || 60,
+        location: form.location || null,
       }).select().single()
       if (error || !proj) { alert('Lỗi: ' + error?.message); return }
       await supabase.from('project_members').insert({
         project_id: proj.id, user_id: user.id, role: 'admin'
       })
       setShowForm(false)
-      setForm({ name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60' })
+      setForm({ name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60', location:'' })
       loadProjects()
     } finally {
       setCreating(false)
@@ -304,6 +305,7 @@ export default function ProjectsPage() {
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
                   {[['Tên dự án *','name','Điện mặt trời...','text'],
                     ['Chủ đầu tư','client','Công ty...','text'],
+                    ['Nhà máy (nơi lắp đặt)','location','VD: Nhà máy Dệt Sợi ABC','text'],
                     ['Nhà thầu','contractor','TTCE-HTE','text'],
                     ['Số ngày thi công','total_days','60','number'],
                   ].map(([lbl,key,ph,type]) => (
