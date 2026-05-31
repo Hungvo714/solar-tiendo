@@ -280,6 +280,22 @@ export default function ReportPage() {
               <div style={{ textAlign:'right' }}>
                 <div style={{ fontSize:28, fontWeight:700, color:'#F5A623', fontFamily:'monospace' }}>{fp(tp)}</div>
                 <div style={{ fontSize:10, color:'#8899bb' }}>Tổng tiến độ</div>
+                {project && (() => {
+                  const el2 = project.start_date
+                    ? Math.floor((Date.now() - new Date(project.start_date).getTime()) / 86400000)
+                    : 0
+                  const tot2 = project.total_days ?? 60
+                  return (
+                    <div style={{ fontSize:10, marginTop:4,
+                      color: el2 > tot2 ? '#FF8888' : '#8899bb' }}>
+                      {el2 > tot2
+                        ? `🔴 Trễ ${el2 - tot2} ngày`
+                        : el2 === tot2
+                          ? '⏰ Ngày cuối'
+                          : `📅 Ngày ${el2}/${tot2} · Còn ${tot2 - el2} ngày`}
+                    </div>
+                  )
+                })()}
               </div>
             </div>
 
