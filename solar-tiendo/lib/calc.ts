@@ -36,11 +36,18 @@ export function totalPct(items: Item[], progressMap: Record<string, Progress>): 
 
 export function fp(v: number) { return (v * 100).toFixed(1) + '%' }
 
-export function statusOf(pct: number) {
+export function statusOf(pct: number, isNA?: boolean) {
+  if (isNA)       return { l: '➖ N/A',       c: 'na'      }
   if (pct >= 1)   return { l: '✅ XONG',      c: 'done'    }
   if (pct >= 0.5) return { l: '🔄 ĐANG LÀM', c: 'doing'   }
   if (pct > 0)    return { l: '⏳ BẮT ĐẦU',  c: 'started' }
   return               { l: '□ CHƯA',      c: 'todo'    }
+}
+
+export function isItemNA(item: any, progressMap: Record<string, any>): boolean {
+  const steps = item.steps ?? []
+  if (steps.length === 0) return false
+  return steps.every((s: any) => !!progressMap[s.id]?.is_na)
 }
 
 export function elapsedDays(startDate: string) {
