@@ -446,14 +446,16 @@ export default function ReportPage() {
                                 })()
                                 return (
                                   <div key={it.id} style={{ display:'grid',
-                                    gridTemplateColumns:'1fr 58px 58px 58px',
+                                    gridTemplateColumns:'1fr 60px 58px 58px 75px',
                                     padding:'6px 10px', gap:4, alignItems:'center',
                                     background: idx%2===0 ? (z ? z.light+'18' : '#ffffff06') : 'transparent',
                                     borderTop:'1px solid #ffffff08' }}>
                                     <span style={{ fontSize:10, color: printMode ? '#1a1a2e' : '#c8d8f0',
                                       overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                                      {isLate && <span style={{ color:'#FF8888', fontSize:9 }}>🔴 </span>}
                                       <span style={{ color:z?.color, fontSize:9 }}>{it.stt}.</span> {it.name}
+                                    </span>
+                                    <span style={{ fontSize:9, textAlign:'center', color:z?.color }}>
+                                      {z?.label}
                                     </span>
                                     <span style={{ fontSize:9, textAlign:'center',
                                       color: printMode ? '#555' : '#8899bb' }}>
@@ -464,8 +466,9 @@ export default function ReportPage() {
                                       {fmtD(g?.actual_end || g?.plan_end)}
                                     </span>
                                     <span style={{ fontSize:9, textAlign:'center',
-                                      color: isLate ? '#FF8888' : '#fbbf24' }}>
-                                      {isLate ? '⚠️ Trễ' : z?.label}
+                                      color: isLate ? '#FF8888' : '#4ade80',
+                                      fontWeight: isLate ? 700 : 400 }}>
+                                      {isLate ? '🔴 Trễ' : '🟢 Đúng KH'}
                                     </span>
                                   </div>
                                 )
