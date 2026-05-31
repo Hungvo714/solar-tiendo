@@ -74,6 +74,7 @@ export default function ReportPage() {
 
   function getNextWeekItems() {
     const now = new Date()
+    now.setHours(0,0,0,0)
     const daysToNextMon = (7 - now.getDay()) % 7 || 7
     const nextMon = new Date(now)
     nextMon.setDate(now.getDate() + daysToNextMon)
@@ -84,17 +85,37 @@ export default function ReportPage() {
     const nextMonStr = nextMon.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})
     const nextSunStr = nextSun.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})
     const label = `Tuần ${parseInt(weekNum)+1} (${nextMonStr} - ${nextSunStr})`
-    const list = items.filter(it => {
+
+    const list = items.filter((it: any) => {
       const g = ganttMap[it.id]
-      // Ưu tiên ngày thực tế, sau đó kế hoạch
-      const startDate = g?.actual_start || g?.plan_start
-      const endDate   = g?.actual_end   || g?.plan_end
-      if (!startDate) return false
-      const s = new Date(startDate)
-      const e = endDate ? new Date(endDate) : s
-      // Hiển thị nếu công việc đang diễn ra hoặc bắt đầu trong tuần tới
-      // Điều kiện: start <= chủ nhật tuần tới VÀ end >= thứ 2 tuần tới
-      return s <= nextSun && e >= nextMon
+      const pct = itemPct(it, progressMap)
+      if (pct >= 1) return false // Đã hoàn thành thì không hiện
+
+      const groupType = it.group_type ?? 'B'
+
+      if (groupType === 'A') {
+        // Vật tư: hiện khi HT (thực tế ưu tiên, sau đó KH) trong tuần tới
+        // HOẶC đã trễ (HT KH < hôm nay) mà chưa xong
+        const endDate = g?.actual_end || g?.plan_end
+        if (!endDate) return false
+        const e = new Date(endDate)
+        // Trễ: HT đã qua mà chưa xong
+        if (e < now) return true
+        // HT nằm trong tuần tới
+        return e >= nextMon && e <= nextSun
+      } else {
+        // Thi công & Đấu nối (B, C): hiện khi thời gian thực hiện giao với tuần tới
+        // Ưu tiên thực tế, fallback về KH
+        const startDate = g?.actual_start || g?.plan_start
+        const endDate   = g?.actual_end   || g?.plan_end
+        if (!startDate) return false
+        const s = new Date(startDate)
+        const e = endDate ? new Date(endDate) : s
+        // Trễ: đang thực hiện mà HT đã qua tuần tới
+        if (s <= now && e < nextMon) return true // đang dở dang, trễ
+        // Giao với tuần tới
+        return s <= nextSun && e >= nextMon
+      }
     })
     return { list, label }
   }
@@ -140,6 +161,9 @@ export default function ReportPage() {
         }
       }
       body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      /* Ẩn URL header/footer của browser */
+      @page { margin-header: 0mm; margin-footer: 0mm; }
+      head { display: none; }
       .no-print { display: none !important; }
       .print-only { display: block !important; }
       nav, header { display: none !important; }
@@ -271,70 +295,88 @@ export default function ReportPage() {
                 color: printMode ? '#0d1b3e' : '#c0d0ef', marginBottom:8 }}>
                 TIẾN ĐỘ TỪNG HẠNG MỤC
               </div>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:10 }}>
-                <thead>
-                  <tr style={{ background:'#0d1b3e' }}>
-                    {['Hạng mục','Khu vực','%','BD KH','HT KH','HT TT','Trạng thái','Tiến độ'].map(h => (
-                      <th key={h} style={{ padding:'7px 8px', color:'#8899bb',
-                        fontWeight:600, textAlign:'center', whiteSpace:'nowrap',
-                        border:'1px solid #ffffff10' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((it, idx) => {
-                    const pct = itemPct(it, progressMap)
-                    const z   = zones.find(zn => zn.id === it.zone_id)
-                    const g   = ganttMap[it.id]
-                    const sch = getSchedStatus(it)
-                    return (
-                      <tr key={it.id} style={{
-                        background: idx%2===0
-                          ? (printMode ? '#f8f9ff' : '#ffffff08')
-                          : (printMode ? '#fff' : 'transparent') }}>
-                        <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                          color: printMode ? '#1a1a2e' : '#c8d8f0', maxWidth:180 }}>
-                          <span style={{ color:z?.color, marginRight:4, fontSize:9 }}>{it.stt}.</span>
-                          {it.name}
-                        </td>
-                        <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                          textAlign:'center', color:z?.color, whiteSpace:'nowrap' }}>
-                          {z?.label}
-                        </td>
-                        <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                          textAlign:'center', fontWeight:700, fontFamily:'monospace',
-                          color: pct>=1?'#276221':pct>0?'#9C6500':'#9C0006' }}>
-                          {fp(pct)}
-                        </td>
-                        <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                          textAlign:'center', color: printMode?'#555':'#8899bb', whiteSpace:'nowrap' }}>
-                          {fmtD(g?.plan_start)}
-                        </td>
-                        <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                          textAlign:'center', color: printMode?'#1a5fa5':'#60a5fa', whiteSpace:'nowrap' }}>
-                          {fmtD(g?.plan_end)}
-                        </td>
-                        <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                          textAlign:'center', color: printMode?'#276221':'#4ade80', whiteSpace:'nowrap' }}>
-                          {fmtD(g?.actual_end)}
-                        </td>
-                        <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                          textAlign:'center', whiteSpace:'nowrap',
-                          color: sch ? sch.color : '#8899bb', fontSize:9 }}>
-                          {sch?.label ?? '—'}
-                        </td>
-                        <td style={{ padding:'6px 10px', border:'1px solid #ffffff10', minWidth:60 }}>
-                          <div style={{ height:6, background: printMode?'#e0e0e0':'#ffffff15',
-                            borderRadius:3, overflow:'hidden' }}>
-                            <div style={{ height:'100%', width:`${pct*100}%`,
-                              background:z?.color ?? '#4472C4', borderRadius:3 }}/>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+              {[
+                { key:'A', label:'A. HẠNG MỤC VẬT TƯ',          color:'#E65100' },
+                { key:'B', label:'B. HẠNG MỤC THI CÔNG',          color:'#1565C0' },
+                { key:'C', label:'C. HẠNG MỤC ĐẤU NỐI VẬN HÀNH', color:'#2E7D32' },
+              ].map(group => {
+                const groupItems = items.filter((it:any) => it.group_type === group.key)
+                if (groupItems.length === 0) return null
+                return (
+                  <div key={group.key} style={{ marginBottom:10 }}>
+                    <div style={{ padding:'6px 10px', background:`${group.color}22`,
+                      border:`1px solid ${group.color}44`, borderRadius:'6px 6px 0 0',
+                      fontSize:10, fontWeight:700,
+                      color: printMode ? group.color : group.color }}>
+                      {group.label}
+                    </div>
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:10 }}>
+                      <thead>
+                        <tr style={{ background:'#0d1b3e' }}>
+                          {['Hạng mục','Khu vực','%','BD KH','HT KH','HT TT','Trạng thái','Tiến độ'].map(h => (
+                            <th key={h} style={{ padding:'6px 8px', color:'#8899bb',
+                              fontWeight:600, textAlign:'center', whiteSpace:'nowrap',
+                              border:'1px solid #ffffff10' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupItems.map((it:any, idx:number) => {
+                          const pct = itemPct(it, progressMap)
+                          const z   = zones.find(zn => zn.id === it.zone_id)
+                          const g   = ganttMap[it.id]
+                          const sch = getSchedStatus(it)
+                          return (
+                            <tr key={it.id} style={{
+                              background: idx%2===0
+                                ? (printMode ? '#f8f9ff' : '#ffffff08')
+                                : (printMode ? '#fff' : 'transparent') }}>
+                              <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
+                                color: printMode ? '#1a1a2e' : '#c8d8f0', maxWidth:180 }}>
+                                <span style={{ color:z?.color, marginRight:4, fontSize:9 }}>{it.stt}.</span>
+                                {it.name}
+                              </td>
+                              <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
+                                textAlign:'center', color:z?.color, whiteSpace:'nowrap' }}>
+                                {z?.label}
+                              </td>
+                              <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
+                                textAlign:'center', fontWeight:700, fontFamily:'monospace',
+                                color: pct>=1?'#276221':pct>0?'#9C6500':'#9C0006' }}>
+                                {fp(pct)}
+                              </td>
+                              <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
+                                textAlign:'center', color: printMode?'#555':'#8899bb', whiteSpace:'nowrap' }}>
+                                {fmtD(g?.plan_start)}
+                              </td>
+                              <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
+                                textAlign:'center', color: printMode?'#1a5fa5':'#60a5fa', whiteSpace:'nowrap' }}>
+                                {fmtD(g?.plan_end)}
+                              </td>
+                              <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
+                                textAlign:'center', color: printMode?'#276221':'#4ade80', whiteSpace:'nowrap' }}>
+                                {fmtD(g?.actual_end)}
+                              </td>
+                              <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
+                                textAlign:'center', whiteSpace:'nowrap',
+                                color: sch ? sch.color : '#8899bb', fontSize:9 }}>
+                                {sch?.label ?? '—'}
+                              </td>
+                              <td style={{ padding:'6px 10px', border:'1px solid #ffffff10', minWidth:60 }}>
+                                <div style={{ height:6, background: printMode?'#e0e0e0':'#ffffff15',
+                                  borderRadius:3, overflow:'hidden' }}>
+                                  <div style={{ height:'100%', width:`${pct*100}%`,
+                                    background:z?.color ?? '#4472C4', borderRadius:3 }}/>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })}
             </div>
 
             {/* Vấn đề phát sinh */}
@@ -381,24 +423,53 @@ export default function ReportPage() {
                           <span style={{ textAlign:'center' }}>BD KH</span>
                           <span style={{ textAlign:'center' }}>HT KH</span>
                         </div>
-                        {nxItems.map((it, idx) => {
-                          const z = zones.find(zn => zn.id === it.zone_id)
-                          const g = ganttMap[it.id]
+                        {[
+                          { key:'A', label:'A. Vật tư',      color:'#E65100' },
+                          { key:'B', label:'B. Thi công',     color:'#1565C0' },
+                          { key:'C', label:'C. Đấu nối VH',  color:'#2E7D32' },
+                        ].map(group => {
+                          const gItems = nxItems.filter((it:any) => it.group_type === group.key)
+                          if (gItems.length === 0) return null
                           return (
-                            <div key={it.id} style={{ display:'grid',
-                              gridTemplateColumns:'1fr 70px 65px 65px',
-                              padding:'6px 10px', gap:6, alignItems:'center',
-                              background: idx%2===0 ? (z ? z.light+'25' : '#ffffff08') : (printMode ? '#fff' : 'transparent'),
-                              borderTop: '1px solid #ffffff08' }}>
-                              <span style={{ fontSize:10, color: printMode ? '#1a1a2e' : '#c8d8f0' }}>
-                                <span style={{ color:z?.color, fontSize:9, marginRight:3 }}>{it.stt}.</span>
-                                {it.name}
-                              </span>
-                              <span style={{ fontSize:9, textAlign:'center', color:z?.color }}>{z?.label}</span>
-                              <span style={{ fontSize:9, textAlign:'center',
-                                color: printMode ? '#555' : '#8899bb' }}>{fmtD(g?.plan_start)}</span>
-                              <span style={{ fontSize:9, textAlign:'center',
-                                color: printMode ? '#1a5fa5' : '#60a5fa' }}>{fmtD(g?.plan_end)}</span>
+                            <div key={group.key}>
+                              <div style={{ padding:'5px 10px', background:`${group.color}22`,
+                                fontSize:9, fontWeight:700, color:group.color,
+                                borderTop:'1px solid #ffffff08' }}>
+                                {group.label}
+                              </div>
+                              {gItems.map((it:any, idx:number) => {
+                                const z = zones.find(zn => zn.id === it.zone_id)
+                                const g = ganttMap[it.id]
+                                const isLate = (() => {
+                                  const endD = g?.actual_end || g?.plan_end
+                                  return endD && new Date(endD) < new Date() && itemPct(it, progressMap) < 1
+                                })()
+                                return (
+                                  <div key={it.id} style={{ display:'grid',
+                                    gridTemplateColumns:'1fr 58px 58px 58px',
+                                    padding:'6px 10px', gap:4, alignItems:'center',
+                                    background: idx%2===0 ? (z ? z.light+'18' : '#ffffff06') : 'transparent',
+                                    borderTop:'1px solid #ffffff08' }}>
+                                    <span style={{ fontSize:10, color: printMode ? '#1a1a2e' : '#c8d8f0',
+                                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                      {isLate && <span style={{ color:'#FF8888', fontSize:9 }}>🔴 </span>}
+                                      <span style={{ color:z?.color, fontSize:9 }}>{it.stt}.</span> {it.name}
+                                    </span>
+                                    <span style={{ fontSize:9, textAlign:'center',
+                                      color: printMode ? '#555' : '#8899bb' }}>
+                                      {fmtD(g?.actual_start || g?.plan_start)}
+                                    </span>
+                                    <span style={{ fontSize:9, textAlign:'center',
+                                      color: printMode ? '#1a5fa5' : '#60a5fa' }}>
+                                      {fmtD(g?.actual_end || g?.plan_end)}
+                                    </span>
+                                    <span style={{ fontSize:9, textAlign:'center',
+                                      color: isLate ? '#FF8888' : '#fbbf24' }}>
+                                      {isLate ? '⚠️ Trễ' : z?.label}
+                                    </span>
+                                  </div>
+                                )
+                              })}
                             </div>
                           )
                         })}
