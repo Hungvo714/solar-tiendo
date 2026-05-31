@@ -130,8 +130,13 @@ export default function PublicViewPage() {
             <div style={{ fontSize:10, color:'#8899bb', marginBottom:4 }}>TỔNG TIẾN ĐỘ DỰ ÁN</div>
             <div style={{ fontFamily:'monospace', fontSize:36, fontWeight:700,
               color:'#F5A623', lineHeight:1 }}>{fp(tp)}</div>
-            <div style={{ fontSize:10, color:'#8899bb', marginTop:6 }}>
-              Ngày {el}/{total} · Còn {Math.max(0, total-el)} ngày
+            <div style={{ fontSize:10, marginTop:6,
+              color: el > total ? '#FF8888' : '#8899bb' }}>
+              Ngày {el}/{total} · {el > total
+                ? `🔴 Trễ tiến độ ${el - total} ngày`
+                : el === total
+                  ? '⏰ Hôm nay là ngày cuối'
+                  : `Còn ${total - el} ngày`}
             </div>
             <div style={{ marginTop:8, height:6, background:'#ffffff15',
               borderRadius:3, overflow:'hidden' }}>
