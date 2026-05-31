@@ -31,6 +31,8 @@ export default function ProgressPage() {
   const [expanded,     setExpanded]     = useState<Record<string, boolean>>({})
   const [isViewer,     setIsViewer]     = useState(false)
   const [dependencies, setDependencies] = useState<{item_stt:number, depends_on_stt:number}[]>([])
+  const [subItems,     setSubItems]     = useState<Record<string, any[]>>({})
+  const [editSubItem,  setEditSubItem]  = useState<{itemId:string, sub?:any}|null>(null)
 
   useEffect(() => {
     const pid = new URLSearchParams(window.location.search).get('project') || ''
@@ -55,10 +57,38 @@ export default function ProgressPage() {
       for (const g of gd) gm[(g as GanttDate).item_id] = g as GanttDate
       setGanttMap(gm)
       setDependencies((deps ?? []) as {item_stt:number, depends_on_stt:number}[])
+      // Load sub_items cho nhóm A
+      const itemIds = (it as any[]).filter((i:any) => i.group_type === 'A').map((i:any) => i.id)
+      if (itemIds.length > 0) {
+        const { data: subs } = await supabase.from('sub_items').select('*').in('item_id', itemIds).order('sort_order')
+        const subMap: Record<string, any[]> = {}
+        for (const s of subs ?? []) {
+          if (!subMap[s.item_id]) subMap[s.item_id] = []
+          subMap[s.item_id].push(s)
+        }
+        setSubItems(subMap)
+      }
       setLoading(false)
     }
     load()
   }, [])
+
+  async function saveSubItem(itemId: string, sub: any) {
+    if (sub.id) {
+      await supabase.from('sub_items').update(sub).eq('id', sub.id)
+    } else {
+      await supabase.from('sub_items').insert({ ...sub, item_id: itemId })
+    }
+    const { data } = await supabase.from('sub_items').select('*').eq('item_id', itemId).order('sort_order')
+    setSubItems(prev => ({ ...prev, [itemId]: data ?? [] }))
+    setEditSubItem(null)
+  }
+
+  async function deleteSubItem(itemId: string, subId: string) {
+    if (!confirm('Xoá vật tư phụ này?')) return
+    await supabase.from('sub_items').delete().eq('id', subId)
+    setSubItems(prev => ({ ...prev, [itemId]: (prev[itemId] ?? []).filter(s => s.id !== subId) }))
+  }
 
   function getMinStartDate(itemStt: number): string | undefined {
     const deps = dependencies.filter(d => d.item_stt === itemStt)
@@ -258,6 +288,64 @@ export default function ProgressPage() {
               })}
             </div>
 
+            {/* Sub Items - chỉ hiện cho nhóm A */}
+            {(item as any).group_type === 'A' && (
+              <div style={{ marginBottom:10 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                  <span style={{ fontSize:10, fontWeight:600, color:'#c0d0ef' }}>📦 Vật tư phụ</span>
+                  {!isViewer && (
+                    <button onClick={() => setEditSubItem({ itemId: item.id })}
+                      style={{ fontSize:9, padding:'2px 8px', borderRadius:6, cursor:'pointer',
+                        background:'#1a2d5a', border:'1px solid #4472C4', color:'#60a5fa',
+                        fontFamily:'inherit' }}>
+                      + Thêm
+                    </button>
+                  )}
+                </div>
+                {(subItems[item.id] ?? []).length === 0 ? (
+                  <div style={{ fontSize:10, color:'#ffffff30', fontStyle:'italic', padding:'4px 0' }}>
+                    Chưa có vật tư phụ
+                  </div>
+                ) : (
+                  <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                    {/* Header */}
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 60px 50px 70px',
+                      padding:'4px 8px', fontSize:9, fontWeight:600, color:'#8899bb', gap:4 }}>
+                      <span>Tên vật tư</span>
+                      <span style={{ textAlign:'center' }}>ĐVT</span>
+                      <span style={{ textAlign:'center' }}>SL</span>
+                      <span style={{ textAlign:'center' }}>Ngày cần</span>
+                    </div>
+                    {(subItems[item.id] ?? []).map((sub: any) => (
+                      <div key={sub.id} style={{ display:'grid',
+                        gridTemplateColumns:'1fr 60px 50px 70px',
+                        padding:'5px 8px', borderRadius:6, gap:4, alignItems:'center',
+                        background:'#ffffff08', border:'1px solid #ffffff08' }}>
+                        <span style={{ fontSize:10, color:'#c8d8f0' }}>{sub.name}</span>
+                        <span style={{ fontSize:9, color:'#8899bb', textAlign:'center' }}>{sub.unit || '—'}</span>
+                        <span style={{ fontSize:9, color:'#8899bb', textAlign:'center' }}>{sub.quantity || '—'}</span>
+                        <span style={{ fontSize:9, color:'#60a5fa', textAlign:'center' }}>
+                          {sub.need_date ? new Date(sub.need_date).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : '—'}
+                        </span>
+                        {!isViewer && (
+                          <div style={{ display:'flex', gap:4, gridColumn:'1/-1', justifyContent:'flex-end' }}>
+                            <button onClick={() => setEditSubItem({ itemId: item.id, sub })}
+                              style={{ fontSize:9, padding:'1px 6px', borderRadius:5, cursor:'pointer',
+                                background:'transparent', border:'1px solid #ffffff20', color:'#8899bb',
+                                fontFamily:'inherit' }}>✏️</button>
+                            <button onClick={() => deleteSubItem(item.id, sub.id)}
+                              style={{ fontSize:9, padding:'1px 6px', borderRadius:5, cursor:'pointer',
+                                background:'transparent', border:'1px solid #ff444420', color:'#ff8888',
+                                fontFamily:'inherit' }}>🗑️</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Steps */}
             {isViewer && (
               <div style={{ background:'#185FA510', border:'1px solid #185FA530',
@@ -310,6 +398,63 @@ export default function ProgressPage() {
     )
   }
 
+  // Modal thêm/sửa vật tư phụ
+  function SubItemModal() {
+    const [name,     setName]     = useState(editSubItem?.sub?.name ?? '')
+    const [unit,     setUnit]     = useState(editSubItem?.sub?.unit ?? '')
+    const [quantity, setQty]      = useState(editSubItem?.sub?.quantity ?? '')
+    const [needDate, setNeedDate] = useState(editSubItem?.sub?.need_date ?? '')
+    const [note,     setNote]     = useState(editSubItem?.sub?.note ?? '')
+    if (!editSubItem) return null
+    return (
+      <div style={{ position:'fixed', inset:0, background:'#000000bb',
+        display:'flex', alignItems:'center', justifyContent:'center', zIndex:999 }}>
+        <div style={{ background:'#0d1b3e', border:'1px solid #4472C4',
+          borderRadius:14, padding:20, width:320, maxWidth:'90vw' }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#e8eaf0', marginBottom:14 }}>
+            {editSubItem.sub ? '✏️ Sửa vật tư phụ' : '➕ Thêm vật tư phụ'}
+          </div>
+          {[
+            ['Tên vật tư *', name, setName, 'text', 'VD: Bu lông M10'],
+            ['Đơn vị tính', unit, setUnit, 'text', 'VD: cái, kg, m...'],
+            ['Số lượng', quantity, setQty, 'number', '0'],
+            ['Ngày cần', needDate, setNeedDate, 'date', ''],
+            ['Ghi chú', note, setNote, 'text', ''],
+          ].map(([label, val, setter, type, ph]) => (
+            <div key={label as string} style={{ marginBottom:10 }}>
+              <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:3 }}>{label as string}</label>
+              <input type={type as string} value={val as string}
+                placeholder={ph as string}
+                onChange={e => (setter as Function)(e.target.value)}
+                style={{ width:'100%', background:'#0a0f1e', border:'1px solid #ffffff20',
+                  borderRadius:7, padding:'7px 10px', color:'#e8eaf0',
+                  fontFamily:'inherit', fontSize:12, outline:'none',
+                  boxSizing:'border-box' as any, colorScheme:'dark' as any }}/>
+            </div>
+          ))}
+          <div style={{ display:'flex', gap:8, marginTop:14 }}>
+            <button onClick={() => setEditSubItem(null)}
+              style={{ flex:1, padding:9, background:'transparent', border:'1px solid #ffffff20',
+                borderRadius:8, color:'#8899bb', fontFamily:'inherit', fontSize:12, cursor:'pointer' }}>
+              Huỷ
+            </button>
+            <button onClick={() => saveSubItem(editSubItem.itemId, {
+                ...editSubItem.sub, name, unit, quantity: quantity ? parseFloat(quantity as string) : null,
+                need_date: needDate || null, note
+              })}
+              disabled={!name}
+              style={{ flex:1, padding:9, background: name ? '#1a3a8a' : '#1a2d5a',
+                border:'1px solid #4472C4', borderRadius:8, color:'#fff',
+                fontFamily:'inherit', fontSize:12, fontWeight:600,
+                cursor: name ? 'pointer' : 'not-allowed' }}>
+              💾 Lưu
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (loading) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
       height:'100vh', background:'#0a0f1e', color:'#8899bb', flexDirection:'column', gap:8 }}>
@@ -318,6 +463,8 @@ export default function ProgressPage() {
   )
 
   return (
+    <>
+    <SubItemModal />
     <div style={{ display:'flex', flexDirection:'column', minHeight:'100vh',
       background:'#0a0f1e', color:'#e8eaf0', fontFamily:'system-ui,sans-serif', fontSize:13 }}>
 
@@ -423,5 +570,6 @@ export default function ProgressPage() {
         </div>
       </main>
     </div>
+    </>
   )
 }
