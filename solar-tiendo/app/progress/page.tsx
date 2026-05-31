@@ -180,8 +180,11 @@ export default function ProgressPage() {
     const isTCStart = (field === 'plan_start' || field === 'actual_start')
       && item.group_type !== 'A'
 
+    console.log('updateGanttSmart:', item.stt, item.group_type, field, value, 'isTCStart:', isTCStart)
+
     if (isTCStart && value) {
       const vtDeps = dependencies.filter(d => d.item_stt === item.stt)
+      console.log('vtDeps:', vtDeps, 'dependencies length:', dependencies.length)
       for (const dep of vtDeps) {
         const vtItem = items.find(it => it.stt === dep.depends_on_stt && (it as any).group_type === 'A')
         if (!vtItem) continue
