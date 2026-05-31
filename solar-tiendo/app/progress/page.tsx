@@ -466,7 +466,7 @@ export default function ProgressPage() {
             </button>
             <button onClick={() => saveSubItem(editSubItem.itemId, {
                 ...editSubItem.sub, name, unit, quantity: quantity ? parseFloat(quantity as string) : null,
-                need_date: needDate || null, note
+                note
               })}
               disabled={!name}
               style={{ flex:1, padding:9, background: name ? '#1a3a8a' : '#1a2d5a',
