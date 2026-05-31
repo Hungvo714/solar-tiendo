@@ -1,4 +1,5 @@
 'use client'
+import DateInput from '@/components/DateInput'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, fp, statusOf } from '@/lib/calc'
@@ -133,10 +134,18 @@ export default function ProgressPage() {
     { path: '/report',    icon: 'ti-file-description',  label: 'Báo cáo'  },
   ]
 
-  const filtered = items.filter(it =>
-    (filterZone === 'all' || it.zone_id === filterZone) &&
+  const filtered = items.filter((it:any) =>
+    (filterZone === 'all' || it.zone_id === filterZone || it.group_type === filterZone) &&
     (!search || it.name.toLowerCase().includes(search.toLowerCase()))
   )
+
+  // Group items theo nhóm A/B/C khi không filter hoặc filter theo nhóm
+  const showGroups = filterZone === 'all' || filterZone === 'A' || filterZone === 'B' || filterZone === 'C'
+  const GROUPS = [
+    { key:'A', label:'A. HẠNG MỤC VẬT TƯ', color:'#E65100' },
+    { key:'B', label:'B. HẠNG MỤC THI CÔNG', color:'#1565C0' },
+    { key:'C', label:'C. HẠNG MỤC ĐẤU NỐI VẬN HÀNH', color:'#2E7D32' },
+  ]
 
   if (loading) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
@@ -211,7 +220,13 @@ export default function ProgressPage() {
                 color:'#e8eaf0', fontFamily:'inherit', fontSize:12, flex:1 }}/>
           </div>
           <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
-            {[{id:'all',label:'Tất cả',color:'#4a7ab5'}, ...zones.map(z => ({id:z.id,label:z.label,color:z.color}))].map(z => (
+            {[
+              {id:'all', label:'Tất cả', color:'#4a7ab5'},
+              {id:'A', label:'A. Vật tư', color:'#E65100'},
+              {id:'B', label:'B. Thi công', color:'#1565C0'},
+              {id:'C', label:'C. Đấu nối VH', color:'#2E7D32'},
+              ...zones.map(z => ({id:z.id, label:z.label, color:z.color}))
+            ].map(z => (
               <button key={z.id} onClick={() => setFilterZone(z.id)}
                 style={{ padding:'4px 10px', borderRadius:12, cursor:'pointer', fontFamily:'inherit', fontSize:10,
                   border: `1px solid ${filterZone===z.id ? z.color : '#ffffff20'}`,
@@ -224,9 +239,19 @@ export default function ProgressPage() {
           </div>
         </div>
 
-        {/* Items */}
+        {/* Items theo nhóm */}
         <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
-          {filtered.map(item => {
+          {showGroups ? GROUPS.map(group => {
+            const groupItems = filtered.filter((it:any) => it.group_type === group.key)
+            if (groupItems.length === 0) return null
+            return (
+              <div key={group.key}>
+                <div style={{ padding:'7px 12px', background:`${group.color}22`,
+                  border:`1px solid ${group.color}44`, borderRadius:8,
+                  fontSize:11, fontWeight:700, color:group.color, marginBottom:5 }}>
+                  {group.label}
+                </div>
+                {groupItems.map(item => {
             const pct  = itemPct(item, progressMap)
             const z    = zones.find(zn => zn.id === item.zone_id)
             const st   = statusOf(pct)
@@ -298,29 +323,24 @@ export default function ProgressPage() {
                               </span>
                             )}
                           </label>
-                          <input type="date"
+                          <DateInput
                             value={val}
                             min={isViewer ? undefined : minDate}
                             max={isViewer ? undefined : maxDate}
-                            onChange={e => {
+                            disabled={isViewer}
+                            onChange={v => {
                               if (isViewer) return
-                              const v = e.target.value
                               if (minDate && v && v < minDate) {
-                                alert('⚠️ Ngày bắt đầu phải từ ' + new Date(minDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' trở đi\n(Sau khi hoàn thành hạng mục điều kiện)')
+                                alert('⚠️ Ngày bắt đầu phải từ ' + new Date(minDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' trở đi')
                                 return
                               }
                               if (maxDate && v && v > maxDate) {
-                                alert('⚠️ Ngày kết thúc không được sau ' + new Date(maxDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'}) + '\n(Trước ngày bắt đầu thi công)')
+                                alert('⚠️ Ngày kết thúc không được sau ' + new Date(maxDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'}))
                                 return
                               }
                               updateGantt(item.id, field, v)
                             }}
-                          readOnly={isViewer}
-                          style={{ ...(isViewer ? { opacity:0.5, cursor:'not-allowed' } : {}) }}
-                            style={{ background:'#0a0f1e', border:`1px solid ${z?.color ?? '#ffffff20'}`,
-                              borderRadius:5, padding:'5px 8px', color:'#60a5fa',
-                              fontFamily:'inherit', fontSize:11, outline:'none', width:'100%',
-                              colorScheme:'dark' }}/>
+                          />
                         </div>
                         )
                       })}
