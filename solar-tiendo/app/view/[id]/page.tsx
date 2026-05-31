@@ -122,9 +122,10 @@ export default function PublicViewPage() {
 
         {/* Tổng tiến độ */}
         <div style={{ background:'linear-gradient(135deg,#0d1b3e,#1a2d5a)',
-          border:'1px solid #F5A623', borderRadius:12, padding:'16px 20px',
+          border:'1px solid #F5A623', borderRadius:12, padding:'14px 16px',
           marginBottom:12, display:'flex', alignItems:'center',
-          justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
+          justifyContent:'space-between', gap:12, flexWrap:'wrap',
+          maxWidth:680 }}>
           {/* Trái: % tiến độ */}
           <div style={{ flex:1, minWidth:140 }}>
             <div style={{ fontSize:10, color:'#8899bb', marginBottom:4 }}>TỔNG TIẾN ĐỘ DỰ ÁN</div>
@@ -144,14 +145,14 @@ export default function PublicViewPage() {
             borderLeft:'1px solid #ffffff15', paddingLeft:16 }}>
             {/* Vòng tròn tiến độ */}
             {(() => {
-              const circ = 2*Math.PI*28, dash = circ*tp
+              const circ = 2*Math.PI*36, dash = circ*tp
               return (
-                <svg width="64" height="64" style={{ transform:'rotate(-90deg)', flexShrink:0 }}>
-                  <circle cx="32" cy="32" r="28" fill="none" stroke="#ffffff15" strokeWidth="6"/>
-                  <circle cx="32" cy="32" r="28" fill="none" stroke="#F5A623" strokeWidth="6"
+                <svg width="84" height="84" style={{ transform:'rotate(-90deg)', flexShrink:0 }}>
+                  <circle cx="42" cy="42" r="36" fill="none" stroke="#ffffff15" strokeWidth="7"/>
+                  <circle cx="42" cy="42" r="36" fill="none" stroke="#F5A623" strokeWidth="7"
                     strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"/>
-                  <text x="32" y="32" fill="#F5A623" fontFamily="monospace"
-                    fontSize="11" fontWeight="700"
+                  <text x="42" y="42" fill="#F5A623" fontFamily="monospace"
+                    fontSize="13" fontWeight="700"
                     textAnchor="middle" dominantBaseline="central"
                     style={{ transform:'rotate(90deg)', transformBox:'fill-box' }}>
                     {Math.round(tp*100)}%
