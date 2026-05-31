@@ -59,7 +59,7 @@ export default function PublicViewPage() {
 
   // Next week items
   const now = new Date()
-  const daysToNextMon = (7 - now.getDay()) % 7 || 7
+  const daysToNextMon = now.getDay() === 0 ? 1 : 8 - now.getDay()
   const nextMon = new Date(now); nextMon.setDate(now.getDate() + daysToNextMon); nextMon.setHours(0,0,0,0)
   const nextSun = new Date(nextMon); nextSun.setDate(nextMon.getDate() + 6); nextSun.setHours(23,59,59,999)
   const nextMonStr = nextMon.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})
