@@ -274,19 +274,30 @@ export default function ProgressPage() {
           .toISOString().split('T')[0]
 
         if (!vtEnd) {
-          // Vật tư chưa có ngày → tự động tính luôn không cần hỏi
+          // Vật tư chưa có ngày → tự động tính luôn
           const isActual = field === 'actual_start'
           await updateGantt(vtItem.id, isActual ? 'actual_end'   : 'plan_end',   newVtEnd)
           await updateGantt(vtItem.id, isActual ? 'actual_start' : 'plan_start', newVtStart)
-        } else if (value <= vtEnd) {
-          // Có ngày rồi nhưng conflict → hỏi user
-          setConflict({
-            tcItemId: item.id, tcField: field, tcValue: value,
-            vtItem, newVtEnd, newVtStart
-          })
-          return
+        } else {
+          // Vật tư đã có ngày → chỉ cập nhật nếu ngày mới SỚM HƠN (lấy ngày cần hàng sớm nhất)
+          const isActual = field === 'actual_start'
+          const endField   = isActual ? 'actual_end'   : 'plan_end'
+          const startField = isActual ? 'actual_start' : 'plan_start'
+
+          if (newVtEnd < vtEnd) {
+            // Ngày mới sớm hơn → cập nhật để đảm bảo vật tư đến kịp
+            await updateGantt(vtItem.id, endField,   newVtEnd)
+            await updateGantt(vtItem.id, startField, newVtStart)
+          } else if (value <= vtEnd) {
+            // BD thi công <= HT vật tư hiện tại → conflict thật sự
+            setConflict({
+              tcItemId: item.id, tcField: field, tcValue: value,
+              vtItem, newVtEnd, newVtStart
+            })
+            return
+          }
+          // Ngày mới trễ hơn và không conflict → giữ nguyên ngày VT cũ
         }
-        // vtEnd có và không conflict → không làm gì với vật tư
       }
     }
     // Lưu ngày thi công
