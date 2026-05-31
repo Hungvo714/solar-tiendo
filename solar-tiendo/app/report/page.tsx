@@ -75,7 +75,7 @@ export default function ReportPage() {
   function getNextWeekItems() {
     const now = new Date()
     now.setHours(0,0,0,0)
-    const daysToNextMon = (7 - now.getDay()) % 7 || 7
+    const daysToNextMon = now.getDay() === 0 ? 1 : 8 - now.getDay()
     const nextMon = new Date(now)
     nextMon.setDate(now.getDate() + daysToNextMon)
     nextMon.setHours(0,0,0,0)
@@ -94,14 +94,15 @@ export default function ReportPage() {
       const groupType = it.group_type ?? 'B'
 
       if (groupType === 'A') {
-        // Vật tư: hiện khi HT (thực tế ưu tiên, sau đó KH) trong tuần tới
+        // Vật tư: chỉ hiện khi HT KH nằm ĐÚNG trong tuần tới
         // HOẶC đã trễ (HT KH < hôm nay) mà chưa xong
-        const endDate = g?.actual_end || g?.plan_end
+        const endDate = g?.plan_end  // Chỉ dùng KH, không dùng actual
         if (!endDate) return false
         const e = new Date(endDate)
-        // Trễ: HT đã qua mà chưa xong
+        e.setHours(0,0,0,0)
+        // Trễ: HT KH đã qua hôm nay mà chưa xong
         if (e < now) return true
-        // HT nằm trong tuần tới
+        // HT KH nằm đúng trong tuần tới (nextMon đến nextSun)
         return e >= nextMon && e <= nextSun
       } else {
         // Thi công & Đấu nối (B, C): hiện khi thời gian thực hiện giao với tuần tới
@@ -109,10 +110,10 @@ export default function ReportPage() {
         const startDate = g?.actual_start || g?.plan_start
         const endDate   = g?.actual_end   || g?.plan_end
         if (!startDate) return false
-        const s = new Date(startDate)
-        const e = endDate ? new Date(endDate) : s
-        // Trễ: đang thực hiện mà HT đã qua tuần tới
-        if (s <= now && e < nextMon) return true // đang dở dang, trễ
+        const s = new Date(startDate); s.setHours(0,0,0,0)
+        const e = endDate ? new Date(endDate) : s; e.setHours(23,59,59,999)
+        // Trễ: đang dở dang mà HT đã qua hôm nay
+        if (s <= now && e < now) return true
         // Giao với tuần tới
         return s <= nextSun && e >= nextMon
       }
