@@ -33,6 +33,10 @@ export default function ProgressPage() {
   const [dependencies, setDependencies] = useState<{item_stt:number, depends_on_stt:number}[]>([])
   const [subItems,     setSubItems]     = useState<Record<string, any[]>>({})
   const [editSubItem,  setEditSubItem]  = useState<{itemId:string, sub?:any}|null>(null)
+  const [conflict,     setConflict]     = useState<{
+    tcItemId: string, tcField: string, tcValue: string,
+    vtItem: any, newVtEnd: string, newVtStart: string
+  }|null>(null)
 
   useEffect(() => {
     const pid = new URLSearchParams(window.location.search).get('project') || ''
@@ -171,6 +175,56 @@ export default function ProgressPage() {
     await upsertGantt(projectId, itemId, field, value)
   }
 
+  async function updateGanttSmart(item: any, field: string, value: string) {
+    // Chỉ check conflict khi nhập ngày BD thi công (nhóm B/C)
+    const isTCStart = (field === 'plan_start' || field === 'actual_start')
+      && item.group_type !== 'A'
+
+    if (isTCStart && value) {
+      // Tìm hạng mục vật tư phụ thuộc (depends_on)
+      const vtDeps = dependencies.filter(d => d.item_stt === item.stt)
+      for (const dep of vtDeps) {
+        const vtItem = items.find(it => it.stt === dep.depends_on_stt && (it as any).group_type === 'A')
+        if (!vtItem) continue
+        const vtGantt = ganttMap[vtItem.id] as any
+        const vtEnd = vtGantt?.actual_end || vtGantt?.plan_end
+
+        if (vtEnd && value <= vtEnd) {
+          // Conflict! BD thi công <= HT vật tư
+          // Tính ngày vật tư mới nếu update
+          const orderDays = (vtItem as any).order_days ?? 7
+          const newVtEnd = new Date(new Date(value).getTime() - 86400000)
+            .toISOString().split('T')[0]
+          const newVtStart = new Date(new Date(newVtEnd).getTime() - orderDays * 86400000)
+            .toISOString().split('T')[0]
+
+          setConflict({
+            tcItemId: item.id, tcField: field, tcValue: value,
+            vtItem, newVtEnd, newVtStart
+          })
+          return // Chưa lưu, chờ user chọn
+        }
+      }
+    }
+    // Không conflict - lưu bình thường
+    updateGantt(item.id, field, value)
+  }
+
+  async function resolveConflict(choice: 'update_vt' | 'cancel_tc') {
+    if (!conflict) return
+    if (choice === 'update_vt') {
+      // Cập nhật ngày vật tư + lưu ngày thi công
+      const isActual = conflict.tcField === 'actual_start'
+      const endField   = isActual ? 'actual_end'   : 'plan_end'
+      const startField = isActual ? 'actual_start' : 'plan_start'
+      await updateGantt(conflict.vtItem.id, endField,   conflict.newVtEnd)
+      await updateGantt(conflict.vtItem.id, startField, conflict.newVtStart)
+      await updateGantt(conflict.tcItemId,  conflict.tcField, conflict.tcValue)
+    }
+    // choice === 'cancel_tc': không làm gì, bỏ ngày vừa nhập
+    setConflict(null)
+  }
+
   function navigate(path: string) {
     window.location.href = `${path}?project=${projectId}`
   }
@@ -244,6 +298,27 @@ export default function ProgressPage() {
         {/* Body */}
         {open && (
           <div style={{ borderTop:`1px solid ${z?.color ?? '#ffffff15'}`, padding:12 }}>
+            {/* Order days - chỉ nhóm A */}
+            {(item as any).group_type === 'A' && !isViewer && (
+              <div style={{ display:'flex', alignItems:'center', gap:8,
+                marginBottom:8, padding:'6px 10px', borderRadius:7,
+                background:'#fbbf2410', border:'1px solid #fbbf2430' }}>
+                <span style={{ fontSize:10, color:'#fbbf24' }}>⏱️ Thời gian đặt hàng:</span>
+                <input type="number" min="1" max="90"
+                  defaultValue={(item as any).order_days ?? 7}
+                  onBlur={async e => {
+                    const days = parseInt(e.target.value) || 7
+                    await supabase.from('items').update({ order_days: days }).eq('id', item.id)
+                    setItems(prev => prev.map(it =>
+                      it.id === item.id ? { ...it, order_days: days } as any : it
+                    ))
+                  }}
+                  style={{ width:50, background:'#0a0f1e', border:'1px solid #fbbf2440',
+                    borderRadius:5, padding:'3px 6px', color:'#fbbf24',
+                    fontFamily:'monospace', fontSize:12, outline:'none', textAlign:'center' }}/>
+                <span style={{ fontSize:10, color:'#8899bb' }}>ngày</span>
+              </div>
+            )}
             {/* Gantt dates */}
             <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:10 }}>
               {[['plan_start','BD Kế hoạch'],['plan_end','HT Kế hoạch'],
@@ -427,6 +502,47 @@ export default function ProgressPage() {
   }
 
   // Modal thêm/sửa vật tư phụ
+  function ConflictModal() {
+    if (!conflict) return null
+    const vtName = conflict.vtItem?.name ?? ''
+    const fmtD = (d: string) => new Date(d).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})
+    return (
+      <div style={{ position:'fixed', inset:0, background:'#000000cc',
+        display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}>
+        <div style={{ background:'#0d1b3e', border:'1px solid #fbbf24',
+          borderRadius:14, padding:24, width:360, maxWidth:'90vw' }}>
+          <div style={{ fontSize:14, fontWeight:700, color:'#fbbf24', marginBottom:12 }}>
+            ⚠️ Conflict ngày
+          </div>
+          <div style={{ fontSize:11, color:'#c8d8f0', marginBottom:16, lineHeight:1.6 }}>
+            Ngày thi công bắt đầu sớm hơn ngày hoàn thành vật tư
+            <strong style={{ color:'#fbbf24' }}> "{vtName}"</strong>.
+            <br/>Bạn muốn làm gì?
+          </div>
+          <div style={{ background:'#ffffff08', borderRadius:8, padding:10, marginBottom:16, fontSize:10, color:'#8899bb' }}>
+            Nếu cập nhật vật tư:<br/>
+            • BD đặt hàng: <span style={{ color:'#60a5fa' }}>{fmtD(conflict.newVtStart)}</span><br/>
+            • HT đặt hàng: <span style={{ color:'#60a5fa' }}>{fmtD(conflict.newVtEnd)}</span>
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            <button onClick={() => resolveConflict('update_vt')}
+              style={{ padding:10, background:'#276221', border:'1px solid #4ade80',
+                borderRadius:9, color:'#4ade80', fontFamily:'inherit',
+                fontSize:12, fontWeight:600, cursor:'pointer' }}>
+              ✅ Cập nhật ngày vật tư & lưu ngày thi công
+            </button>
+            <button onClick={() => resolveConflict('cancel_tc')}
+              style={{ padding:10, background:'transparent', border:'1px solid #ffffff20',
+                borderRadius:9, color:'#8899bb', fontFamily:'inherit',
+                fontSize:12, cursor:'pointer' }}>
+              ↩️ Giữ ngày vật tư, bỏ ngày thi công vừa nhập
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   function SubItemModal() {
     const [name,     setName]     = useState(editSubItem?.sub?.name ?? '')
     const [unit,     setUnit]     = useState(editSubItem?.sub?.unit ?? '')
@@ -490,6 +606,7 @@ export default function ProgressPage() {
 
   return (
     <>
+    <ConflictModal />
     <SubItemModal />
     <div style={{ display:'flex', flexDirection:'column', minHeight:'100vh',
       background:'#0a0f1e', color:'#e8eaf0', fontFamily:'system-ui,sans-serif', fontSize:13 }}>
