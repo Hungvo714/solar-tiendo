@@ -59,3 +59,12 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 /* Text overflow utilities */
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Force date input display dd/mm/yyyy */
+input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+  direction: ltr;
+}
+input[type="date"]::-webkit-datetime-edit-month-field { order: 2; }
+input[type="date"]::-webkit-datetime-edit-day-field   { order: 1; }
+input[type="date"]::-webkit-datetime-edit-year-field  { order: 3; }
+input[type="date"]::-webkit-datetime-edit-text        { order: 0; }
