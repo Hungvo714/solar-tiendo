@@ -306,11 +306,11 @@ export default function ProgressPage() {
                               if (isViewer) return
                               const v = e.target.value
                               if (minDate && v && v < minDate) {
-                                alert('⚠️ Ngày bắt đầu phải từ ' + new Date(minDate).toLocaleDateString('vi-VN') + ' trở đi\n(Sau khi hoàn thành hạng mục điều kiện)')
+                                alert('⚠️ Ngày bắt đầu phải từ ' + new Date(minDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' trở đi\n(Sau khi hoàn thành hạng mục điều kiện)')
                                 return
                               }
                               if (maxDate && v && v > maxDate) {
-                                alert('⚠️ Ngày kết thúc không được sau ' + new Date(maxDate).toLocaleDateString('vi-VN') + '\n(Trước ngày bắt đầu thi công)')
+                                alert('⚠️ Ngày kết thúc không được sau ' + new Date(maxDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'}) + '\n(Trước ngày bắt đầu thi công)')
                                 return
                               }
                               updateGantt(item.id, field, v)
