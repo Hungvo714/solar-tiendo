@@ -148,13 +148,75 @@ export default function ProgressPage() {
     return minDate ? minDate.toISOString().split('T')[0] : undefined
   }
 
-  async function toggleStep(stepId: string, isDone: boolean) {
+  async function toggleStep(stepId: string, isDone: boolean, item?: any) {
+    const newDone = !isDone
     setProgressMap(prev => ({
       ...prev,
       [stepId]: { ...prev[stepId], step_id: stepId, project_id: projectId,
-        is_done: !isDone, is_na: false } as Progress
+        is_done: newDone, is_na: false } as Progress
     }))
-    await upsertProgress(projectId, stepId, !isDone)
+    await upsertProgress(projectId, stepId, newDone)
+
+    const today = new Date().toISOString().split('T')[0]
+
+    // Nếu tick hoàn thành bước cuối của hạng mục thi công (B/C)
+    if (newDone && item && item.group_type !== 'A') {
+      const steps = (item.steps ?? [])
+      const allDone = steps.every((s: any) =>
+        s.id === stepId ? true : !!progressMap[s.id]?.is_done || !!progressMap[s.id]?.is_na
+      )
+      if (allDone) {
+        const vtDeps = dependencies.filter(d => d.item_stt === item.stt)
+        for (const dep of vtDeps) {
+          const vtItem = items.find((it: any) => it.stt === dep.depends_on_stt && it.group_type === 'A')
+          if (!vtItem) continue
+          const vtPct = itemPct(vtItem, progressMap)
+          if (vtPct < 1) {
+            const vtSteps = (vtItem as any).steps ?? []
+            for (const vs of vtSteps) {
+              if (!progressMap[vs.id]?.is_done) {
+                setProgressMap(prev => ({
+                  ...prev,
+                  [vs.id]: { ...prev[vs.id], step_id: vs.id, project_id: projectId,
+                    is_done: true, is_na: false } as Progress
+                }))
+                await upsertProgress(projectId, vs.id, true)
+              }
+            }
+            const vtGantt = ganttMap[vtItem.id] as any
+            if (!vtGantt?.actual_end) {
+              await updateGantt(vtItem.id, 'actual_end', today)
+            }
+          }
+        }
+      }
+    }
+
+    // Nếu BỎ tick bước thi công → bỏ tick vật tư nếu HT thực tế = hôm nay (vừa tự động tick)
+    if (!newDone && item && item.group_type !== 'A') {
+      const vtDeps = dependencies.filter(d => d.item_stt === item.stt)
+      for (const dep of vtDeps) {
+        const vtItem = items.find((it: any) => it.stt === dep.depends_on_stt && it.group_type === 'A')
+        if (!vtItem) continue
+        const vtGantt = ganttMap[vtItem.id] as any
+        // Chỉ bỏ tick nếu HT thực tế = hôm nay (tức là vừa được tự động tick)
+        if (vtGantt?.actual_end === today) {
+          const vtSteps = (vtItem as any).steps ?? []
+          for (const vs of vtSteps) {
+            if (progressMap[vs.id]?.is_done) {
+              setProgressMap(prev => ({
+                ...prev,
+                [vs.id]: { ...prev[vs.id], step_id: vs.id, project_id: projectId,
+                  is_done: false } as Progress
+              }))
+              await upsertProgress(projectId, vs.id, false)
+            }
+          }
+          // Xóa HT thực tế vật tư
+          await updateGantt(vtItem.id, 'actual_end', '')
+        }
+      }
+    }
   }
 
   async function toggleNA(stepId: string, isNa: boolean) {
@@ -418,7 +480,7 @@ export default function ProgressPage() {
                   <div key={step.id} style={{ display:'flex', alignItems:'center', gap:8,
                     padding:'7px 9px', borderRadius:7,
                     background: done ? '#1a3a1a' : na ? '#ffffff05' : '#ffffff06' }}>
-                    <div onClick={() => !isViewer && toggleStep(step.id, done)}
+                    <div onClick={() => !isViewer && toggleStep(step.id, done, item)}
                       style={{ width:16, height:16, borderRadius:4, flexShrink:0,
                         cursor: isViewer ? 'not-allowed' : 'pointer',
                         opacity: isViewer ? 0.5 : 1,
