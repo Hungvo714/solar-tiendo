@@ -23,7 +23,9 @@ export default function ProjectsPage() {
   const [addingMember, setAddingMember] = useState(false)
   const [myUserId,  setMyUserId]  = useState<string|null>(null)
   const [isAdmin,   setIsAdmin]   = useState(false)
-  const [newUserInfo, setNewUserInfo] = useState<{email:string,pass:string}|null>(null)
+  const [newUserInfo,  setNewUserInfo]  = useState<{email:string,pass:string}|null>(null)
+  const [editProject,  setEditProject]  = useState<any|null>(null)
+  const [editForm,     setEditForm]     = useState({ name:'', client:'', contractor:'', location:'', start_date:'', total_days:'' })
   const [form, setForm] = useState({
     name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60', location:'', location:''
   })
@@ -104,6 +106,32 @@ export default function ProjectsPage() {
     const { data } = await supabase.from('project_members').select('*').eq('project_id', pid)
     setMembers((data ?? []) as Member[])
     setShowMembers(pid)
+  }
+
+  function openEditProject(proj: any) {
+    setEditProject(proj)
+    setEditForm({
+      name:       proj.name        ?? '',
+      client:     proj.client      ?? '',
+      contractor: proj.contractor  ?? '',
+      location:   proj.location    ?? '',
+      start_date: proj.start_date  ?? '',
+      total_days: String(proj.total_days ?? 60),
+    })
+  }
+
+  async function saveEditProject() {
+    if (!editProject) return
+    await supabase.from('projects').update({
+      name:       editForm.name,
+      client:     editForm.client,
+      contractor: editForm.contractor,
+      location:   editForm.location || null,
+      start_date: editForm.start_date,
+      total_days: parseInt(editForm.total_days) || 60,
+    }).eq('id', editProject.id)
+    setEditProject(null)
+    loadProjects()
   }
 
   async function addMember(pid: string) {
@@ -209,6 +237,51 @@ export default function ProjectsPage() {
 
   return (
     <>
+    {/* Modal sửa dự án */}
+    {editProject && (
+      <div style={{ position:'fixed', inset:0, background:'#000000bb',
+        display:'flex', alignItems:'center', justifyContent:'center', zIndex:999 }}>
+        <div style={{ background:'#0d1b3e', border:'1px solid #4472C4',
+          borderRadius:14, padding:24, width:360, maxWidth:'90vw' }}>
+          <div style={{ fontSize:14, fontWeight:700, color:'#e8eaf0', marginBottom:16 }}>
+            ✏️ Sửa thông tin dự án
+          </div>
+          {[
+            ['Tên dự án *',           'name',       'text',   'Điện mặt trời...'],
+            ['Chủ đầu tư',            'client',     'text',   'Công ty...'],
+            ['Nhà máy (nơi lắp đặt)', 'location',   'text',   'VD: Nhà máy ABC'],
+            ['Nhà thầu',              'contractor', 'text',   'TTCE-HTE'],
+            ['Ngày bắt đầu',          'start_date', 'date',   ''],
+            ['Số ngày thi công',      'total_days', 'number', '60'],
+          ].map(([label, key, type, ph]) => (
+            <div key={key} style={{ marginBottom:10 }}>
+              <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:3 }}>{label}</label>
+              <input type={type} value={(editForm as any)[key]}
+                placeholder={ph}
+                onChange={e => setEditForm(prev => ({ ...prev, [key]: e.target.value }))}
+                style={{ width:'100%', background:'#0a0f1e', border:'1px solid #ffffff20',
+                  borderRadius:7, padding:'7px 10px', color:'#e8eaf0',
+                  fontFamily:'inherit', fontSize:12, outline:'none',
+                  boxSizing:'border-box' as any, colorScheme:'dark' as any }}/>
+            </div>
+          ))}
+          <div style={{ display:'flex', gap:8, marginTop:16 }}>
+            <button onClick={() => setEditProject(null)}
+              style={{ flex:1, padding:10, background:'transparent', border:'1px solid #ffffff20',
+                borderRadius:9, color:'#8899bb', fontFamily:'inherit', fontSize:12, cursor:'pointer' }}>
+              Huỷ
+            </button>
+            <button onClick={saveEditProject} disabled={!editForm.name}
+              style={{ flex:1, padding:10, background: editForm.name ? '#1a3a8a' : '#1a2d5a',
+                border:'1px solid #4472C4', borderRadius:9, color:'#fff',
+                fontFamily:'inherit', fontSize:12, fontWeight:600,
+                cursor: editForm.name ? 'pointer' : 'not-allowed' }}>
+              💾 Lưu thay đổi
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     {/* Popup thông tin tài khoản mới */}
     {newUserInfo && (
       <div style={{ position:'fixed', inset:0, background:'#000000aa',
@@ -376,6 +449,12 @@ export default function ProjectsPage() {
                       <button onClick={() => showMembers===proj.id ? setShowMembers(null) : loadMembers(proj.id)}
                         style={S.btn('#4A235A22','#c084fc','#7030A0')}>
                         👥 Thành viên
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <button onClick={() => openEditProject(proj)}
+                        style={S.btn('#1a2d5a','#60a5fa','#4472C4')}>
+                        ✏️ Sửa
                       </button>
                     )}
                     {isAdmin && (
