@@ -52,7 +52,7 @@ export default function PublicViewPage() {
   )
 
   const tp    = totalPct(items, progressMap)
-  const { elapsedDays: el, totalDays: total } = getProjectDates(items as any[], ganttMap)
+  const { elapsedDays: el, totalDays: total, startDate, endDate } = getProjectDates(items as any[], ganttMap)
   const today = new Date().toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})
   const fmtD  = (d?: string|null) => d ? new Date(d).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : '—'
 
@@ -191,6 +191,22 @@ export default function PublicViewPage() {
                 <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>CẬP NHẬT</div>
                 <div style={{ fontSize:11, color:'#60a5fa' }}>{today}</div>
               </div>
+              {startDate && (
+                <div>
+                  <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>NGÀY BẮT ĐẦU</div>
+                  <div style={{ fontSize:11, color:'#c8d8f0' }}>
+                    {new Date(startDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})}
+                  </div>
+                </div>
+              )}
+              {endDate && (
+                <div>
+                  <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>NGÀY HOÀN THÀNH</div>
+                  <div style={{ fontSize:11, color:'#c8d8f0' }}>
+                    {new Date(endDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
