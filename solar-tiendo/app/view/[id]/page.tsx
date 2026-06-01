@@ -65,13 +65,28 @@ export default function PublicViewPage() {
   const nextSunStr = nextSun.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})
 
   const doingItems = items.filter(it => { const p = itemPct(it, progressMap); return p > 0 && p < 1 })
-  const nextItems  = items.filter(it => {
+  const now2 = new Date(); now2.setHours(0,0,0,0)
+  const nextItems  = items.filter((it:any) => {
     const g = ganttMap[it.id]
-    const s = g?.actual_start || g?.plan_start
-    const e = g?.actual_end   || g?.plan_end
-    if (!s) return false
-    const sd = new Date(s), ed = e ? new Date(e) : sd
-    return sd <= nextSun && ed >= nextMon && itemPct(it, progressMap) < 1
+    const pct = itemPct(it, progressMap)
+    if (pct >= 1) return false
+
+    if (it.group_type === 'A') {
+      // Vật tư: chỉ hiện khi HT KH trong tuần tới hoặc đã trễ
+      const endDate = g?.plan_end
+      if (!endDate) return false
+      const e = new Date(endDate); e.setHours(0,0,0,0)
+      if (e < now2) return true // Trễ chưa xong
+      return e >= nextMon && e <= nextSun
+    } else {
+      // Thi công B/C: hiện khi thời gian giao với tuần tới
+      const s = g?.actual_start || g?.plan_start
+      const e = g?.actual_end   || g?.plan_end
+      if (!s) return false
+      const sd = new Date(s); sd.setHours(0,0,0,0)
+      const ed = e ? new Date(e) : sd; ed.setHours(0,0,0,0)
+      return sd <= nextSun && ed >= nextMon
+    }
   })
 
   const circ = 2*Math.PI*26, dash = circ*tp
