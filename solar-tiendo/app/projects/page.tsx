@@ -387,9 +387,6 @@ export default function ProjectsPage() {
                   ))}
                 </div>
                 <div style={{ marginBottom:14 }}>
-                  <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:4 }}>Ngày khởi công</label>
-                  <input type="date" value={form.start_date}
-                    onChange={e => setForm(p => ({...p,start_date:e.target.value}))} style={S.inp}/>
                 </div>
                 <div style={{ display:'flex', gap:8 }}>
                   <button onClick={createProject} disabled={!form.name || creating}
