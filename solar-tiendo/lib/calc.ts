@@ -78,8 +78,17 @@ export function getProjectDates(items: any[], ganttMap: Record<string, any>) {
       const ed = new Date(endDate); ed.setHours(0,0,0,0)
       totalDays = Math.max(1, Math.floor((ed.getTime() - sd.getTime()) / 86400000))
     }
-    // Tuần số = số tuần từ BD dự án đến hôm nay
-    weekNum = Math.ceil((elapsedDays + 1) / 7)
+    // Tuần số theo tuần lịch (thứ 2 → CN)
+    // Lấy thứ 2 của tuần chứa ngày BD
+    const sdDay = sd.getDay() === 0 ? 6 : sd.getDay() - 1 // 0=Mon...6=Sun
+    const startMon = new Date(sd); startMon.setDate(sd.getDate() - sdDay)
+    startMon.setHours(0,0,0,0)
+    // Lấy thứ 2 của tuần hiện tại
+    const nowDay = now.getDay() === 0 ? 6 : now.getDay() - 1
+    const nowMon = new Date(now); nowMon.setDate(now.getDate() - nowDay)
+    nowMon.setHours(0,0,0,0)
+    // Số tuần = khoảng cách giữa 2 thứ 2 / 7 + 1
+    weekNum = Math.floor((nowMon.getTime() - startMon.getTime()) / (7 * 86400000)) + 1
   }
 
   return { startDate, endDate, totalDays, elapsedDays, weekNum }
