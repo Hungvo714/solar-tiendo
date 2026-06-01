@@ -371,6 +371,11 @@ export default function ReportPage() {
                           const z   = zones.find(zn => zn.id === it.zone_id)
                           const g   = ganttMap[it.id]
                           const sch = getSchedStatus(it)
+                          // Check vật tư phụ còn thiếu
+                          const itSubs = subItems[it.id] ?? []
+                          const hasSubWithQty = itSubs.some((s:any) => s.quantity && s.quantity > 0)
+                          const missingSubItems = hasSubWithQty && itSubs.some((s:any) => s.quantity && s.quantity > 0 && !s.is_done)
+                          const showSubWarning = pct >= 1 && missingSubItems
                           return (
                             <tr key={it.id} style={{
                               background: idx%2===0
@@ -403,9 +408,18 @@ export default function ReportPage() {
                                 {fmtD(g?.actual_end)}
                               </td>
                               <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                                textAlign:'center', whiteSpace:'nowrap',
-                                color: sch ? sch.color : '#8899bb', fontSize:9 }}>
-                                {sch?.label ?? '—'}
+                                textAlign:'center', whiteSpace:'nowrap', fontSize:9 }}>
+                                {showSubWarning ? (
+                                  <span>
+                                    <span style={{ color: sch?.color ?? '#4ade80' }}>{sch?.label ?? '✅ XONG'}</span>
+                                    <br/>
+                                    <span style={{ color:'#fbbf24', fontSize:8 }}>⚠️ Thiếu VT phụ</span>
+                                  </span>
+                                ) : (
+                                  <span style={{ color: sch ? sch.color : '#8899bb' }}>
+                                    {sch?.label ?? '—'}
+                                  </span>
+                                )}
                               </td>
                               <td style={{ padding:'6px 10px', border:'1px solid #ffffff10', minWidth:60 }}>
                                 <div style={{ height:6, background: printMode?'#e0e0e0':'#ffffff15',
