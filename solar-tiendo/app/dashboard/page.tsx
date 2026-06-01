@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { itemPct, zonePct, totalPct, fp, statusOf, elapsedDays } from '@/lib/calc'
+import { itemPct, zonePct, totalPct, fp, statusOf, elapsedDays, getProjectDates } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
 import { getItemsWithSteps, getZones, getProgress, getGanttDates } from '@/lib/queries'
 
@@ -51,8 +51,7 @@ export default function DashboardPage() {
   )
 
   const tp    = totalPct(items, progressMap)
-  const el    = project ? elapsedDays(project.start_date) : 0
-  const total = project?.total_days ?? 60
+  const { elapsedDays: el, totalDays: total } = getProjectDates(items as any[], ganttMap)
   const today = new Date().toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})
   const circ  = 2*Math.PI*22, dash = circ*tp
 
