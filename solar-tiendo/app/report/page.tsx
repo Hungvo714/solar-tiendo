@@ -280,6 +280,13 @@ export default function ReportPage() {
                   <div style={{ fontSize:11, color:'#8899bb', marginTop:3 }}>
                     {project?.name} · {project?.contractor} · {today}
                   </div>
+                  {projStart && (
+                    <div style={{ fontSize:11, color:'#8899bb', marginTop:2 }}>
+                      📅 {new Date(projStart).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})}
+                      {projEnd && ` → ${new Date(projEnd).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})}`}
+                      {projEnd && ` (${projTotal} ngày)`}
+                    </div>
+                  )}
                   {reporter && <div style={{ fontSize:11, color:'#8899bb' }}>Người lập: {reporter}</div>}
                 </div>
               </div>
