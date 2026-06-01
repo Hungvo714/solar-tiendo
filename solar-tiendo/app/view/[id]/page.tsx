@@ -1,48 +1,29 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { itemPct, zonePct, totalPct, fp, statusOf } from '@/lib/calc'
+import { itemPct, zonePct, totalPct, fp, statusOf, elapsedDays, getProjectDates } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
 import { getItemsWithSteps, getZones, getProgress, getGanttDates } from '@/lib/queries'
 
-const TABS = [
-  { path:'/dashboard', icon:'ti-layout-dashboard', label:'Tổng quan' },
-  { path:'/progress',  icon:'ti-checklist',        label:'Tiến độ'   },
-  { path:'/gantt',     icon:'ti-calendar-event',   label:'Gantt'     },
-  { path:'/report',    icon:'ti-file-description', label:'Báo cáo'   },
-]
-
-export default function ReportPage() {
+export default function PublicViewPage() {
   const [project,     setProject]     = useState<Project | null>(null)
   const [zones,       setZones]       = useState<Zone[]>([])
   const [items,       setItems]       = useState<Item[]>([])
   const [progressMap, setProgressMap] = useState<Record<string, Progress>>({})
   const [ganttMap,    setGanttMap]    = useState<Record<string, GanttDate>>({})
   const [loading,     setLoading]     = useState(true)
-  const [projectId,   setProjectId]   = useState('')
-  const [issues,      setIssues]      = useState('')
-  const [plan,        setPlan]        = useState('')
-  const [saving,      setSaving]      = useState(false)
-  const [subItems,    setSubItems]    = useState<Record<string, any[]>>({})
-  const [expandedSub, setExpandedSub] = useState<Record<string, boolean>>({})
-  const [saved,       setSaved]       = useState(false)
-  const [weekNum,     setWeekNum]     = useState('')
-  const [reporter,    setReporter]    = useState('')
-  const [printMode,   setPrintMode]   = useState(false)
+  const [notFound,    setNotFound]    = useState(false)
 
   useEffect(() => {
-    const pid = new URLSearchParams(window.location.search).get('project') || ''
-    if (!pid) { window.location.href = '/projects'; return }
-    setProjectId(pid)
-    const now = new Date()
-    const start = new Date(now.getFullYear(), 0, 1)
-    setWeekNum(String(Math.ceil(((now.getTime()-start.getTime())/86400000+start.getDay()+1)/7)))
+    const parts = window.location.pathname.split('/')
+    const pid = parts[parts.length - 1]
+    if (!pid || pid === 'view') { setNotFound(true); setLoading(false); return }
     async function load() {
       const [{ data: proj }, z, it, pr, gd] = await Promise.all([
         supabase.from('projects').select('*').eq('id', pid).single(),
         getZones(), getItemsWithSteps(), getProgress(pid), getGanttDates(pid),
       ])
-      if (!proj) { window.location.href = '/projects'; return }
+      if (!proj) { setNotFound(true); setLoading(false); return }
       setProject(proj); setZones(z); setItems(it as Item[])
       const pm: Record<string, Progress> = {}
       for (const p of pr) pm[(p as Progress).step_id] = p as Progress
@@ -50,605 +31,375 @@ export default function ReportPage() {
       const gm: Record<string, GanttDate> = {}
       for (const g of gd) gm[(g as GanttDate).item_id] = g as GanttDate
       setGanttMap(gm)
-      // Load sub_items
-      const aItems = (it as any[]).filter((i:any) => i.group_type === 'A').map((i:any) => i.id)
-      if (aItems.length > 0) {
-        const { data: subs } = await supabase.from('sub_items').select('*').in('item_id', aItems).order('sort_order')
-        const subMap: Record<string, any[]> = {}
-        for (const s of subs ?? []) {
-          if (!subMap[s.item_id]) subMap[s.item_id] = []
-          subMap[s.item_id].push(s)
-        }
-        setSubItems(subMap)
-      }
       setLoading(false)
     }
     load()
   }, [])
 
-  function navigate(path: string) { window.location.href = `${path}?project=${projectId}` }
-
-  function getSchedStatus(item: Item) {
-    const g = ganttMap[item.id]
-    // Check N/A
-    const steps = (item as any).steps ?? []
-    const allNA = steps.length > 0 && steps.every((s: any) => !!progressMap[s.id]?.is_na)
-    if (allNA) return { label:'➖ N/A', color:'#8899bb' }
-    if (!g?.plan_end) return null
-    const pct = itemPct(item, progressMap)
-    const planEnd = new Date(g.plan_end)
-    const now = new Date()
-    if (pct >= 1) return { label:'✅ Xong', color:'#4ade80' }
-    if (now > planEnd) {
-      const late = Math.round((now.getTime()-planEnd.getTime())/86400000)
-      return { label:`🔴 Trễ ${late}N`, color:'#ff8888' }
-    }
-    const remain = Math.round((planEnd.getTime()-now.getTime())/86400000)
-    if (remain <= 7) return { label:`⏰ Còn ${remain}N`, color:'#fbbf24' }
-    return { label:'🟢 Đúng KH', color:'#4ade80' }
-  }
-
-
-  function getNextWeekItems() {
-    const now = new Date()
-    now.setHours(0,0,0,0)
-    const daysToNextMon = now.getDay() === 0 ? 1 : 8 - now.getDay()
-    const nextMon = new Date(now)
-    nextMon.setDate(now.getDate() + daysToNextMon)
-    nextMon.setHours(0,0,0,0)
-    const nextSun = new Date(nextMon)
-    nextSun.setDate(nextMon.getDate() + 6)
-    nextSun.setHours(23,59,59,999)
-    const nextMonStr = nextMon.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})
-    const nextSunStr = nextSun.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})
-    const label = `Tuần ${parseInt(weekNum)+1} (${nextMonStr} - ${nextSunStr})`
-
-    const list = items.filter((it: any) => {
-      const g = ganttMap[it.id]
-      const pct = itemPct(it, progressMap)
-      if (pct >= 1) return false // Đã hoàn thành thì không hiện
-
-      const groupType = it.group_type ?? 'B'
-
-      if (groupType === 'A') {
-        // Vật tư: chỉ hiện khi HT KH nằm ĐÚNG trong tuần tới
-        // HOẶC đã trễ (HT KH < hôm nay) mà chưa xong
-        const endDate = g?.plan_end  // Chỉ dùng KH, không dùng actual
-        if (!endDate) return false
-        const e = new Date(endDate)
-        e.setHours(0,0,0,0)
-        // Trễ: HT KH đã qua hôm nay mà chưa xong
-        if (e < now) return true
-        // HT KH nằm đúng trong tuần tới (nextMon đến nextSun)
-        return e >= nextMon && e <= nextSun
-      } else {
-        // Thi công & Đấu nối (B, C): hiện khi thời gian thực hiện giao với tuần tới
-        // Ưu tiên thực tế, fallback về KH
-        const startDate = g?.actual_start || g?.plan_start
-        const endDate   = g?.actual_end   || g?.plan_end
-        if (!startDate) return false
-        const s = new Date(startDate); s.setHours(0,0,0,0)
-        const e = endDate ? new Date(endDate) : s; e.setHours(23,59,59,999)
-        // Trễ: đang dở dang mà HT đã qua hôm nay
-        if (s <= now && e < now) return true
-        // Giao với tuần tới
-        return s <= nextSun && e >= nextMon
-      }
-    })
-    // Thêm vật tư phụ của các hạng mục A trong tuần tới
-    const subList: any[] = []
-    list.forEach((it: any) => {
-      if (it.group_type !== 'A') return
-      const g = ganttMap[it.id]
-      const endDate = g?.actual_end || g?.plan_end
-      const subs = subItems[it.id] ?? []
-      subs.forEach((sub: any) => {
-        // Chỉ hiện vật tư phụ đã nhập số lượng và chưa hoàn thành
-        if (!sub.is_done && sub.quantity && sub.quantity > 0) {
-          subList.push({ ...sub, _parentItem: it, _endDate: endDate })
-        }
-      })
-    })
-    return { list, subList, label }
-  }
-
-  const fmtD = (d?: string|null) => d
-    ? new Date(d).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : '—'
-
-  async function saveReport() {
-    if (!project) return
-    setSaving(true)
-    await supabase.from('weekly_reports').insert({
-      project_id: project.id,
-      week_number: parseInt(weekNum)||0,
-      report_date: new Date().toISOString().split('T')[0],
-      issues, next_plan: plan,
-      total_pct: Math.round(totalPct(items, progressMap)*100),
-    })
-    setSaving(false); setSaved(true)
-    setTimeout(()=>setSaved(false), 3000)
-  }
-
-
-
   if (loading) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
-      height:'100vh', background:'#0a0f1e', color:'#8899bb', flexDirection:'column', gap:8 }}>
-      <div style={{ fontSize:28 }}>📋</div><div>Đang tải...</div>
+      height:'100vh', background:'#0a0f1e', color:'#8899bb', flexDirection:'column', gap:12 }}>
+      <div style={{ fontSize:40 }}>☀️</div><div>Đang tải...</div>
+    </div>
+  )
+
+  if (notFound) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+      height:'100vh', background:'#0a0f1e', color:'#8899bb', flexDirection:'column', gap:12 }}>
+      <div style={{ fontSize:40 }}>❌</div>
+      <div style={{ fontSize:16, fontWeight:600, color:'#e8eaf0' }}>Không tìm thấy dự án</div>
     </div>
   )
 
   const tp    = totalPct(items, progressMap)
+  const { elapsedDays: el, totalDays: total } = getProjectDates(items as any[], ganttMap)
   const today = new Date().toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})
+  const fmtD  = (d?: string|null) => d ? new Date(d).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : '—'
 
-  const printStyle = `
-    @media print {
-      @page {
-        size: A4 portrait;
-        margin: 10mm 12mm;
-        @top-right {
-          content: "${project?.name ?? ''}";
-          font-size: 9pt;
-          color: #666;
-        }
-      }
-      body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-      /* Ẩn URL header/footer của browser */
-      @page { margin-header: 0mm; margin-footer: 0mm; }
-      head { display: none; }
-      .no-print { display: none !important; }
-      .print-only { display: block !important; }
-      nav, header { display: none !important; }
-      main { padding: 0 !important; }
-      .report-card { border: none !important; border-radius: 0 !important; padding: 0 !important; }
-    }
-  `
+  // Next week items
+  const now = new Date()
+  const daysToNextMon = now.getDay() === 0 ? 1 : 8 - now.getDay()
+  const nextMon = new Date(now); nextMon.setDate(now.getDate() + daysToNextMon); nextMon.setHours(0,0,0,0)
+  const nextSun = new Date(nextMon); nextSun.setDate(nextMon.getDate() + 6); nextSun.setHours(23,59,59,999)
+  const nextMonStr = nextMon.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})
+  const nextSunStr = nextSun.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})
 
-  // Set document title = tên dự án khi print
-  function handlePrint() {
-    const origTitle = document.title
-    document.title = project?.name ?? 'Bao Cao Tien Do'
-    setPrintMode(true)
-    setTimeout(() => {
-      window.print()
-      document.title = origTitle
-      setPrintMode(false)
-    }, 300)
-  }
+  const doingItems = items.filter(it => { const p = itemPct(it, progressMap); return p > 0 && p < 1 })
+  const nextItems  = items.filter(it => {
+    const g = ganttMap[it.id]
+    const s = g?.actual_start || g?.plan_start
+    const e = g?.actual_end   || g?.plan_end
+    if (!s) return false
+    const sd = new Date(s), ed = e ? new Date(e) : sd
+    return sd <= nextSun && ed >= nextMon && itemPct(it, progressMap) < 1
+  })
+
+  const circ = 2*Math.PI*26, dash = circ*tp
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', minHeight:'100vh',
-      background: printMode ? '#fff' : '#0a0f1e',
-      color: printMode ? '#000' : '#e8eaf0',
+    <div style={{ minHeight:'100vh', background:'#0a0f1e', color:'#e8eaf0',
       fontFamily:'system-ui,sans-serif', fontSize:13 }}>
 
-      <style>{printStyle}</style>
-
-      <header className="no-print" style={{ background:'linear-gradient(135deg,#0d1b3e,#1a2d5a)',
+      {/* HEADER */}
+      <header style={{ background:'linear-gradient(135deg,#0d1b3e,#1a2d5a)',
         padding:'12px 16px', display:'flex', alignItems:'center',
         justifyContent:'space-between', borderBottom:'1px solid #ffffff12',
         position:'sticky', top:0, zIndex:50 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0, flex:1 }}>
           <div style={{ background:'#8B008B', color:'#fff', fontWeight:700,
-            fontSize:11, width:36, height:36, borderRadius:8, flexShrink:0,
-            display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer',
-            letterSpacing:1, fontStyle:'italic' }}
-            onClick={() => window.location.href='/projects'}>HTE</div>
+            fontSize:10, width:38, height:38, borderRadius:8, flexShrink:0,
+            display:'flex', alignItems:'center', justifyContent:'center' }}>HTE</div>
           <div style={{ minWidth:0 }}>
             <div style={{ fontSize:13, fontWeight:700, color:'#fff',
               overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{project?.name}</div>
             <div style={{ fontSize:10, color:'#8899bb' }}>{project?.contractor}</div>
           </div>
         </div>
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0, marginLeft:8 }}>
+          <svg width="52" height="52" style={{ transform:'rotate(-90deg)' }}>
+            <circle cx="26" cy="26" r="24" fill="none" stroke="#ffffff15" strokeWidth="5"/>
+            <circle cx="26" cy="26" r="24" fill="none" stroke="#F5A623" strokeWidth="5"
+              strokeDasharray={`${circ*tp} ${circ}`} strokeLinecap="round"/>
+            <text x="26" y="26" fill="#e8eaf0" fontFamily="monospace" fontSize="11" fontWeight="700"
+              textAnchor="middle" dominantBaseline="central"
+              style={{ transform:'rotate(90deg)', transformBox:'fill-box' }}>
+              {Math.round(tp*100)}%
+            </text>
+          </svg>
+        </div>
       </header>
 
-      <nav className="no-print" style={{ display:'flex', background:'#0d1b3e', borderBottom:'1px solid #ffffff10' }}>
-        {TABS.map(tab => (
-          <button key={tab.path} onClick={() => navigate(tab.path)}
-            style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center',
-              gap:2, padding:'8px 4px', border:'none', background:'transparent',
-              color: tab.path==='/report' ? '#F5A623' : '#8899bb',
-              fontFamily:'inherit', fontSize:10, cursor:'pointer',
-              borderBottom: tab.path==='/report' ? '2px solid #F5A623' : '2px solid transparent',
-              minWidth:60, whiteSpace:'nowrap' }}>
-            <i className={`ti ${tab.icon}`} style={{ fontSize:18 }}/>
-            <span>{tab.label}</span>
-          </button>
-        ))}
-      </nav>
+      {/* Badge */}
+      <div style={{ background:'#185FA510', borderBottom:'1px solid #185FA530',
+        padding:'5px 16px', display:'flex', justifyContent:'space-between',
+        fontSize:10, color:'#60a5fa' }}>
+        <span>🔒 Chế độ xem — Chủ đầu tư</span>
+        <span style={{ color:'#8899bb' }}>📅 {today}</span>
+      </div>
 
-      <main style={{ flex:1, overflowY:'auto', padding: printMode ? 0 : 12 }}>
-        <div style={{ maxWidth: printMode ? '100%' : 680, margin:'0 auto' }}>
-          <div className="report-card" style={{ background: printMode ? '#fff' : '#0d1b3e',
-            border: printMode ? 'none' : '1px solid #ffffff15',
-            borderRadius:14, padding: printMode ? '0' : 18 }}>
+      <main style={{ padding:12, maxWidth:800, margin:'0 auto' }}>
 
-            {/* === PRINT HEADER === */}
-            <div style={{ background:'#0d1b3e', padding:'16px 20px', marginBottom:16,
-              borderRadius: printMode ? 0 : 10,
-              display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                <div style={{ background:'#F5A623', color:'#0d1b3e', fontWeight:700,
-                  fontSize:14, width:48, height:48, borderRadius:10,
-                  display:'flex', alignItems:'center', justifyContent:'center' }}>HTE</div>
-                <div>
-                  <div style={{ fontSize:16, fontWeight:700, color:'#fff' }}>
-                    BÁO CÁO TIẾN ĐỘ THI CÔNG TUẦN {weekNum}
-                  </div>
-                  <div style={{ fontSize:11, color:'#8899bb', marginTop:3 }}>
-                    {project?.name} · {project?.contractor} · {today}
-                  </div>
-                  {reporter && <div style={{ fontSize:11, color:'#8899bb' }}>Người lập: {reporter}</div>}
-                </div>
-              </div>
-              <div style={{ textAlign:'right' }}>
-                <div style={{ fontSize:28, fontWeight:700, color:'#F5A623', fontFamily:'monospace' }}>{fp(tp)}</div>
-                <div style={{ fontSize:10, color:'#8899bb' }}>Tổng tiến độ</div>
-                {project && (() => {
-                  const el2 = project.start_date
-                    ? Math.floor((Date.now() - new Date(project.start_date).getTime()) / 86400000)
-                    : 0
-                  const tot2 = project.total_days ?? 60
-                  return (
-                    <div style={{ fontSize:10, marginTop:4,
-                      color: el2 > tot2 ? '#FF8888' : '#8899bb' }}>
-                      {el2 > tot2
-                        ? `🔴 Trễ ${el2 - tot2} ngày`
-                        : el2 === tot2
-                          ? '⏰ Ngày cuối'
-                          : `📅 Ngày ${el2}/${tot2} · Còn ${tot2 - el2} ngày`}
-                    </div>
-                  )
-                })()}
-              </div>
+        {/* Tổng tiến độ */}
+        <div style={{ background:'linear-gradient(135deg,#0d1b3e,#1a2d5a)',
+          border:'1px solid #F5A623', borderRadius:12, padding:'14px 16px',
+          marginBottom:12, display:'flex', alignItems:'center',
+          justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+          {/* Trái: % tiến độ */}
+          <div style={{ flex:1, minWidth:140 }}>
+            <div style={{ fontSize:10, color:'#8899bb', marginBottom:4 }}>TỔNG TIẾN ĐỘ DỰ ÁN</div>
+            <div style={{ fontFamily:'monospace', fontSize:36, fontWeight:700,
+              color:'#F5A623', lineHeight:1 }}>{fp(tp)}</div>
+            <div style={{ fontSize:10, marginTop:6,
+              color: el > total ? '#FF8888' : '#8899bb' }}>
+              Ngày {el}/{total} · {el > total
+                ? `🔴 Trễ tiến độ ${el - total} ngày`
+                : el === total
+                  ? '⏰ Hôm nay là ngày cuối'
+                  : `Còn ${total - el} ngày`}
             </div>
-
-            {/* Tuần + Người lập — chỉ hiện khi không print */}
-            <div className="no-print" style={{ display:'grid', gridTemplateColumns:'1fr 1fr',
-              gap:10, marginBottom:14 }}>
-              <div>
-                <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:4 }}>Tuần số</label>
-                <div style={{ width:'100%', background:'#0a0f1e', border:'1px solid #ffffff15',
-                  borderRadius:7, padding:'7px 10px', color:'#F5A623',
-                  fontFamily:'monospace', fontSize:14, fontWeight:700 }}>
-                  Tuần {weekNum}
-                </div>
-              </div>
-              <div>
-                <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:4 }}>Người lập báo cáo</label>
-                <input value={reporter} onChange={e => setReporter(e.target.value)}
-                  placeholder="Tên người lập..."
-                  style={{ width:'100%', background:'#0a0f1e', border:'1px solid #ffffff20',
-                    borderRadius:7, padding:'7px 10px', color:'#e8eaf0',
-                    fontFamily:'inherit', fontSize:12, outline:'none' }}/>
-              </div>
-            </div>
-
-            {/* KPI zones */}
-            <div style={{ display:'grid', gridTemplateColumns:`repeat(${zones.length},1fr)`,
-              gap:6, marginBottom:14 }}>
-              {zones.map(z => (
-                <div key={z.id} style={{ background:z.color, borderRadius:8,
-                  padding:'10px 12px', textAlign:'center' }}>
-                  <div style={{ fontSize:10, color:'rgba(255,255,255,0.8)', marginBottom:4 }}>{z.label}</div>
-                  <div style={{ fontSize:18, fontWeight:700, color:'#fff', fontFamily:'monospace' }}>
-                    {fp(zonePct(z.id, items, progressMap))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Table */}
-            <div style={{ marginBottom:14, overflowX:'auto' }}>
-              <div style={{ fontSize:12, fontWeight:700,
-                color: printMode ? '#0d1b3e' : '#c0d0ef', marginBottom:8 }}>
-                TIẾN ĐỘ TỪNG HẠNG MỤC
-              </div>
-              {[
-                { key:'A', label:'A. HẠNG MỤC VẬT TƯ',          color:'#E65100' },
-                { key:'B', label:'B. HẠNG MỤC THI CÔNG',          color:'#1565C0' },
-                { key:'C', label:'C. HẠNG MỤC ĐẤU NỐI VẬN HÀNH', color:'#2E7D32' },
-              ].map(group => {
-                const groupItems = items.filter((it:any) => it.group_type === group.key)
-                if (groupItems.length === 0) return null
-                return (
-                  <div key={group.key} style={{ marginBottom:10 }}>
-                    <div style={{ padding:'6px 10px', background:`${group.color}22`,
-                      border:`1px solid ${group.color}44`, borderRadius:'6px 6px 0 0',
-                      fontSize:10, fontWeight:700,
-                      color: printMode ? group.color : group.color }}>
-                      {group.label}
-                    </div>
-                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:10 }}>
-                      <thead>
-                        <tr style={{ background:'#0d1b3e' }}>
-                          {['Hạng mục','Khu vực','%','BD KH','HT KH','HT TT','Trạng thái','Tiến độ'].map(h => (
-                            <th key={h} style={{ padding:'6px 8px', color:'#8899bb',
-                              fontWeight:600, textAlign:'center', whiteSpace:'nowrap',
-                              border:'1px solid #ffffff10' }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {groupItems.map((it:any, idx:number) => {
-                          const pct = itemPct(it, progressMap)
-                          const z   = zones.find(zn => zn.id === it.zone_id)
-                          const g   = ganttMap[it.id]
-                          const sch = getSchedStatus(it)
-                          return (
-                            <tr key={it.id} style={{
-                              background: idx%2===0
-                                ? (printMode ? '#f8f9ff' : '#ffffff08')
-                                : (printMode ? '#fff' : 'transparent') }}>
-                              <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                                color: printMode ? '#1a1a2e' : '#c8d8f0', maxWidth:180 }}>
-                                <span style={{ color:z?.color, marginRight:4, fontSize:9 }}>{it.stt}.</span>
-                                {it.name}
-                              </td>
-                              <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                                textAlign:'center', color:z?.color, whiteSpace:'nowrap' }}>
-                                {z?.label}
-                              </td>
-                              <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                                textAlign:'center', fontWeight:700, fontFamily:'monospace',
-                                color: pct>=1?'#276221':pct>0?'#9C6500':'#9C0006' }}>
-                                {fp(pct)}
-                              </td>
-                              <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                                textAlign:'center', color: printMode?'#555':'#8899bb', whiteSpace:'nowrap' }}>
-                                {fmtD(g?.plan_start)}
-                              </td>
-                              <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                                textAlign:'center', color: printMode?'#1a5fa5':'#60a5fa', whiteSpace:'nowrap' }}>
-                                {fmtD(g?.plan_end)}
-                              </td>
-                              <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                                textAlign:'center', color: printMode?'#276221':'#4ade80', whiteSpace:'nowrap' }}>
-                                {fmtD(g?.actual_end)}
-                              </td>
-                              <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
-                                textAlign:'center', whiteSpace:'nowrap',
-                                color: sch ? sch.color : '#8899bb', fontSize:9 }}>
-                                {sch?.label ?? '—'}
-                              </td>
-                              <td style={{ padding:'6px 10px', border:'1px solid #ffffff10', minWidth:60 }}>
-                                <div style={{ height:6, background: printMode?'#e0e0e0':'#ffffff15',
-                                  borderRadius:3, overflow:'hidden' }}>
-                                  <div style={{ height:'100%', width:`${pct*100}%`,
-                                    background:z?.color ?? '#4472C4', borderRadius:3 }}/>
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Vấn đề phát sinh */}
-            <div style={{ marginBottom:12 }}>
-              <div style={{ fontSize:11, fontWeight:700,
-                color: printMode ? '#0d1b3e' : '#c0d0ef', marginBottom:5 }}>
-                ⚠️ Vấn đề phát sinh tuần này
-              </div>
-              {printMode ? (
-                <div style={{ border:'1px solid #ddd', borderRadius:6, padding:'8px 10px',
-                  minHeight:50, fontSize:11, color:'#333', whiteSpace:'pre-wrap' }}>
-                  {issues || ' '}
-                </div>
-              ) : (
-                <textarea value={issues} onChange={e => setIssues(e.target.value)}
-                  rows={3} placeholder="Nhập vấn đề phát sinh..."
-                  style={{ width:'100%', background:'#0a0f1e', border:'1px solid #ffffff15',
-                    borderRadius:7, padding:9, color:'#e8eaf0', fontFamily:'inherit',
-                    fontSize:11, resize:'vertical' as any, outline:'none',
-                    boxSizing:'border-box' as any }}/>
-              )}
-            </div>
-
-            {/* Kế hoạch tuần tới - TỰ ĐỘNG */}
-            <div style={{ marginBottom:12 }}>
-              {(() => {
-                const { list: nxItems, subList: nxSubList, label: nxLabel } = getNextWeekItems()
-                return (
-                  <>
-                    <div style={{ fontSize:11, fontWeight:700,
-                      color: printMode ? '#0d1b3e' : '#c0d0ef', marginBottom:5 }}>
-                      📋 Kế hoạch tuần tới — {nxLabel}
-                    </div>
-                    {(nxItems.length > 0 || nxSubList.length > 0) ? (
-                      <div style={{ borderRadius:8, overflow:'hidden',
-                        border: printMode ? '1px solid #ccc' : '1px solid #ffffff10',
-                        marginBottom:8 }}>
-                        <div style={{ display:'grid', gridTemplateColumns:'1fr 60px 55px 55px 72px',
-                          padding:'6px 10px',
-                          background: '#1a2d5a',
-                          fontSize:9, fontWeight:600, color:'#8899bb', gap:4 }}>
-                          <span>Hạng mục</span>
-                          <span style={{ textAlign:'center' }}>Khu vực</span>
-                          <span style={{ textAlign:'center' }}>BD KH</span>
-                          <span style={{ textAlign:'center' }}>HT KH</span>
-                          <span style={{ textAlign:'center' }}>Trạng thái</span>
-                        </div>
-                        {[
-                          { key:'A', label:'A. Vật tư',      color:'#E65100' },
-                          { key:'B', label:'B. Thi công',     color:'#1565C0' },
-                          { key:'C', label:'C. Đấu nối VH',  color:'#2E7D32' },
-                        ].map(group => {
-                          const gItems = nxItems.filter((it:any) => it.group_type === group.key)
-                          if (gItems.length === 0) return null
-                          return (
-                            <div key={group.key}>
-                              <div style={{ padding:'5px 10px', background:`${group.color}22`,
-                                fontSize:9, fontWeight:700, color:group.color,
-                                borderTop:'1px solid #ffffff08' }}>
-                                {group.label}
-                              </div>
-                              {gItems.map((it:any, idx:number) => {
-                                const z = zones.find(zn => zn.id === it.zone_id)
-                                const g = ganttMap[it.id]
-                                const isLate = (() => {
-                                  const endD = g?.actual_end || g?.plan_end
-                                  return endD && new Date(endD) < new Date() && itemPct(it, progressMap) < 1
-                                })()
-                                return (
-                                  <div key={it.id} style={{ display:'grid',
-                                    gridTemplateColumns:'1fr 60px 58px 58px 75px',
-                                    padding:'6px 10px', gap:4, alignItems:'center',
-                                    background: idx%2===0 ? (z ? z.light+'18' : '#ffffff06') : 'transparent',
-                                    borderTop:'1px solid #ffffff08' }}>
-                                    <span style={{ fontSize:10, color: printMode ? '#1a1a2e' : '#c8d8f0',
-                                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                                      <span style={{ color:z?.color, fontSize:9 }}>{it.stt}.</span> {it.name}
-                                    </span>
-                                    <span style={{ fontSize:9, textAlign:'center', color:z?.color }}>
-                                      {z?.label}
-                                    </span>
-                                    <span style={{ fontSize:9, textAlign:'center',
-                                      color: printMode ? '#555' : '#8899bb' }}>
-                                      {fmtD(g?.plan_start)}
-                                    </span>
-                                    <span style={{ fontSize:9, textAlign:'center',
-                                      color: printMode ? '#1a5fa5' : '#60a5fa' }}>
-                                      {fmtD(g?.plan_end)}
-                                    </span>
-                                    <span style={{ fontSize:9, textAlign:'center',
-                                      color: isLate ? '#FF8888' : '#4ade80',
-                                      fontWeight: isLate ? 700 : 400 }}>
-                                      {isLate ? '🔴 Trễ' : '🟢 Đúng KH'}
-                                    </span>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <div style={{ padding:'10px 14px', borderRadius:8, fontSize:11,
-                        background:'#ffffff08', color:'#8899bb',
-                        border:'1px solid #ffffff10', marginBottom:8 }}>
-                        {Object.keys(ganttMap).length === 0
-                          ? '💡 Nhập ngày kế hoạch tại tab Tiến độ để tự động hiển thị'
-                          : '✅ Không có hạng mục nào trong tuần tới'}
-                      </div>
-                    )}
-                    {/* Vật tư phụ */}
-                    {nxSubList.length > 0 && (
-                      <div style={{ marginTop:8 }}>
-                        <div style={{ display:'flex', alignItems:'center',
-                          justifyContent:'space-between', marginBottom:5 }}>
-                          <div style={{ fontSize:10, fontWeight:700, color:'#c0d0ef' }}>
-                            📦 Vật tư phụ cần chuẩn bị ({nxSubList.length})
-                          </div>
-                          <button onClick={() => setExpandedSub(p => ({ ...p, next: !p.next }))}
-                            style={{ fontSize:9, padding:'2px 8px', borderRadius:6,
-                              background:'#1a2d5a', border:'1px solid #ffffff20',
-                              color:'#8899bb', cursor:'pointer', fontFamily:'inherit' }}>
-                            {expandedSub.next ? '▲ Thu gọn' : '▼ Mở rộng'}
-                          </button>
-                        </div>
-                        {expandedSub.next && (
-                          <div style={{ borderRadius:8, overflow:'hidden', border:'1px solid #ffffff10' }}>
-                            <div style={{ display:'grid', gridTemplateColumns:'1fr 100px 60px',
-                              padding:'5px 10px', background:'#1a2d5a',
-                              fontSize:9, fontWeight:600, color:'#8899bb', gap:4 }}>
-                              <span>Vật tư phụ</span>
-                              <span style={{ textAlign:'center' }}>Hạng mục cha</span>
-                              <span style={{ textAlign:'center' }}>Ngày cần</span>
-                            </div>
-                            {nxSubList.map((sub: any, idx: number) => {
-                              const label = `${sub.name}${sub.quantity ? ` (${sub.quantity}${sub.unit ? ' '+sub.unit : ''})` : ''}`
-                              const z = zones.find(zn => zn.id === sub._parentItem?.zone_id)
-                              return (
-                                <div key={sub.id} style={{ display:'grid',
-                                  gridTemplateColumns:'1fr 100px 60px',
-                                  padding:'5px 10px', gap:4, alignItems:'center',
-                                  background: idx%2===0 ? '#ffffff08' : 'transparent',
-                                  borderTop:'1px solid #ffffff08' }}>
-                                  <span style={{ fontSize:10, color:'#c8d8f0' }}>{label}</span>
-                                  <span style={{ fontSize:9, color:z?.color, textAlign:'center',
-                                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                                    {sub._parentItem?.name}
-                                  </span>
-                                  <span style={{ fontSize:9, color:'#60a5fa', textAlign:'center' }}>
-                                    {sub._endDate ? new Date(sub._endDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'}) : '—'}
-                                  </span>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    <textarea value={plan} onChange={e => setPlan(e.target.value)}
-                      rows={2} placeholder="Ghi chú thêm cho tuần tới (tuỳ chọn)..."
-                      style={{ width:'100%', background:'#0a0f1e',
-                        border:'1px solid #ffffff15', borderRadius:7, padding:9,
-                        color:'#e8eaf0', fontFamily:'inherit', fontSize:11,
-                        resize:'vertical' as any, outline:'none',
-                        boxSizing:'border-box' as any,
-                        display: printMode ? 'none' : 'block' }}/>
-                    {printMode && plan && (
-                      <div style={{ border:'1px solid #ddd', borderRadius:6,
-                        padding:'6px 10px', fontSize:11, color:'#333', whiteSpace:'pre-wrap' }}>
-                        {plan}
-                      </div>
-                    )}
-                  </>
-                )
-              })()}
-            </div>
-
-            {/* Sign */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:16 }}>
-              {['Người lập báo cáo','Giám sát trưởng','Chủ đầu tư xác nhận'].map(r => (
-                <div key={r} style={{
-                  border: printMode ? '1px solid #ccc' : '1px dashed #ffffff20',
-                  borderRadius:7, padding:10, textAlign:'center' }}>
-                  <div style={{ fontSize:9, fontWeight:600,
-                    color: printMode ? '#0d1b3e' : '#8899bb', marginBottom:32 }}>{r}</div>
-                  <div style={{ borderTop: printMode ? '1px solid #999' : '1px solid #ffffff20', marginBottom:5 }}/>
-                  <div style={{ fontSize:9, color: printMode ? '#999' : '#ffffff25' }}>Ký tên & đóng dấu</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Footer print */}
-            {printMode && (
-              <div style={{ borderTop:'1px solid #ccc', paddingTop:8, marginTop:8,
-                display:'flex', justifyContent:'space-between', alignItems:'center',
-                fontSize:9, color:'#666' }}>
-                <span style={{ fontWeight:600, color:'#333' }}>
-                  {project?.name} · {project?.client} · {project?.contractor}
-                </span>
-                <span>Ngày {today} · Trang <span className="page-num">1</span></span>
-              </div>
-            )}
-
-            {/* Action buttons */}
-            <div className="no-print" style={{ display:'flex', gap:8 }}>
-              <button onClick={saveReport} disabled={saving}
-                style={{ flex:1, padding:12, background:'#1a2d5a', border:'1px solid #4472C4',
-                  borderRadius:9, color:'#e8eaf0', fontFamily:'inherit',
-                  fontSize:12, fontWeight:600, cursor:'pointer' }}>
-                {saving ? '⏳ Đang lưu...' : saved ? '✅ Đã lưu!' : '💾 Lưu báo cáo'}
-              </button>
-              <button onClick={handlePrint}
-                style={{ flex:1, padding:12, background:'#276221', border:'1px solid #4ade80',
-                  borderRadius:9, color:'#4ade80', fontFamily:'inherit',
-                  fontSize:12, fontWeight:600, cursor:'pointer' }}>
-                🖨️ In / Xuất PDF
-              </button>
-            </div>
-
-            <div className="no-print" style={{ fontSize:10, color:'#8899bb', textAlign:'center', marginTop:8 }}>
-              Nhấn "In / Xuất PDF" → chọn "Save as PDF" → PDF tiếng Việt đầy đủ ✅
+            <div style={{ marginTop:8, height:6, background:'#ffffff15',
+              borderRadius:3, overflow:'hidden' }}>
+              <div style={{ height:'100%', width:`${tp*100}%`,
+                background:'linear-gradient(90deg,#F5A623,#ff8c00)', borderRadius:3 }}/>
             </div>
           </div>
+          {/* Phải: Thông tin dự án + vòng tròn % */}
+          <div style={{ display:'flex', gap:16, alignItems:'center',
+            borderLeft:'1px solid #ffffff15', paddingLeft:16 }}>
+            {/* Vòng tròn tiến độ */}
+            {(() => {
+              const circ = 2*Math.PI*36, dash = circ*tp
+              return (
+                <svg width="84" height="84" style={{ transform:'rotate(-90deg)', flexShrink:0 }}>
+                  <circle cx="42" cy="42" r="36" fill="none" stroke="#ffffff15" strokeWidth="7"/>
+                  <circle cx="42" cy="42" r="36" fill="none" stroke="#F5A623" strokeWidth="7"
+                    strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"/>
+                  <text x="42" y="42" fill="#F5A623" fontFamily="monospace"
+                    fontSize="13" fontWeight="700"
+                    textAnchor="middle" dominantBaseline="central"
+                    style={{ transform:'rotate(90deg)', transformBox:'fill-box' }}>
+                    {Math.round(tp*100)}%
+                  </text>
+                </svg>
+              )
+            })()}
+            {/* Thông tin - 2 cột */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px 16px' }}>
+              <div>
+                <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>DỰ ÁN</div>
+                <div style={{ fontSize:11, fontWeight:600, color:'#e8eaf0',
+                  wordBreak:'break-word' as any }}>{project?.name}</div>
+              </div>
+              {(project as any)?.location && (
+                <div>
+                  <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>NHÀ MÁY</div>
+                  <div style={{ fontSize:11, color:'#c8d8f0',
+                    wordBreak:'break-word' as any }}>{(project as any).location}</div>
+                </div>
+              )}
+              <div>
+                <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>CHỦ ĐẦU TƯ</div>
+                <div style={{ fontSize:11, color:'#c8d8f0',
+                  wordBreak:'break-word' as any }}>{project?.client}</div>
+              </div>
+              <div>
+                <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>NHÀ THẦU</div>
+                <div style={{ fontSize:11, color:'#c8d8f0',
+                  wordBreak:'break-word' as any }}>{project?.contractor}</div>
+              </div>
+              <div>
+                <div style={{ fontSize:9, color:'#8899bb', marginBottom:2 }}>CẬP NHẬT</div>
+                <div style={{ fontSize:11, color:'#60a5fa' }}>{today}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* KPI 4 khu vực */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:12 }}>
+          {zones.map(z => {
+            const pct = zonePct(z.id, items, progressMap)
+            const st  = statusOf(pct)
+            const c2  = 2*Math.PI*18, d2 = c2*pct
+            return (
+              <div key={z.id} style={{ background:'#0d1b3e', border:`1px solid ${z.color}`,
+                borderRadius:10, padding:'10px 12px', position:'relative' }}>
+                <div style={{ position:'absolute', top:0, left:0, right:0, height:3, background:z.color, borderRadius:'10px 10px 0 0' }}/>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                  <div style={{ fontSize:11, fontWeight:600, color:z.color }}>{z.label}</div>
+                  <svg width="36" height="36" style={{ transform:'rotate(-90deg)', flexShrink:0 }}>
+                    <circle cx="18" cy="18" r="16" fill="none" stroke="#ffffff18" strokeWidth="4"/>
+                    <circle cx="18" cy="18" r="16" fill="none" stroke={z.color} strokeWidth="4"
+                      strokeDasharray={`${d2} ${c2}`} strokeLinecap="round"/>
+                    <text x="18" y="18" fill="#e8eaf0" fontSize="8" fontWeight="600"
+                      textAnchor="middle" dominantBaseline="central"
+                      style={{ transform:'rotate(90deg)', transformBox:'fill-box' }}>
+                      {Math.round(pct*100)}%
+                    </text>
+                  </svg>
+                </div>
+                <div style={{ fontFamily:'monospace', fontSize:16, fontWeight:700, color:z.color }}>{fp(pct)}</div>
+                <div style={{ fontSize:10, color: pct>=1?'#4ade80':pct>0?'#fbbf24':'#8899bb' }}>{st.l}</div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Bảng tiến độ - cuộn ngang */}
+        <div style={{ fontSize:12, fontWeight:700, color:'#c0d0ef', marginBottom:8 }}>
+          📋 Tiến độ từng hạng mục
+        </div>
+
+        {[
+          { key:'A', label:'A. HẠNG MỤC VẬT TƯ',          color:'#E65100' },
+          { key:'B', label:'B. HẠNG MỤC THI CÔNG',          color:'#1565C0' },
+          { key:'C', label:'C. HẠNG MỤC ĐẤU NỐI VẬN HÀNH', color:'#2E7D32' },
+        ].map(group => {
+          const groupItems = items.filter((it:any) => it.group_type === group.key)
+          if (groupItems.length === 0) return null
+          return (
+            <div key={group.key} style={{ marginBottom:10 }}>
+              {/* Group header */}
+              <div style={{ padding:'6px 10px', background:`${group.color}22`,
+                border:`1px solid ${group.color}44`, borderRadius:'6px 6px 0 0',
+                fontSize:10, fontWeight:700, color:group.color }}>
+                {group.label}
+              </div>
+              {/* Table */}
+              <div style={{ borderRadius:'0 0 8px 8px', border:'1px solid #ffffff10',
+                borderTop:'none', overflowX:'auto', WebkitOverflowScrolling:'touch' as any }}>
+                <div style={{ minWidth:520 }}>
+                  {/* Header */}
+                  <div style={{ display:'grid', gridTemplateColumns:'28px 2fr 65px 55px 55px 55px 80px',
+                    padding:'7px 10px', background:'#1a2d5a',
+                    fontSize:9, fontWeight:600, color:'#8899bb', gap:4 }}>
+                    <span>#</span><span>Hạng mục</span><span>Khu vực</span>
+                    <span style={{ textAlign:'center' }}>%</span>
+                    <span style={{ textAlign:'center' }}>BD KH</span>
+                    <span style={{ textAlign:'center' }}>HT KH</span>
+                    <span style={{ textAlign:'center' }}>Trạng thái</span>
+                  </div>
+                  {/* Rows */}
+                  {groupItems.map((it:any, idx:number) => {
+                    const pct = itemPct(it, progressMap)
+                    const z   = zones.find(zn => zn.id === it.zone_id)
+                    const g   = ganttMap[it.id]
+                    const allNA = ((it as any).steps ?? []).length > 0 && 
+                      ((it as any).steps ?? []).every((s: any) => !!progressMap[s.id]?.is_na)
+                    const st  = statusOf(pct, allNA)
+                    return (
+                      <div key={it.id} style={{ display:'grid',
+                        gridTemplateColumns:'28px 2fr 65px 55px 55px 55px 80px',
+                        padding:'6px 10px', gap:4, alignItems:'start',
+                        background: idx%2===0 ? (z ? z.light+'18':'#ffffff08') : 'transparent',
+                        borderTop:'1px solid #ffffff08' }}>
+                        <span style={{ fontSize:10, fontWeight:700, color:'#8899bb' }}>{it.stt}</span>
+                        <span style={{ fontSize:11, color:'#c8d8f0',
+                          wordBreak:'break-word' as any, lineHeight:1.4 }}>{it.name}</span>
+                        <span style={{ fontSize:9, color:z?.color,
+                          overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{z?.label}</span>
+                        <span style={{ fontSize:10, fontFamily:'monospace', textAlign:'center', fontWeight:700,
+                          color: pct>=1?'#4ade80':pct>0?'#fbbf24':'#8899bb' }}>{fp(pct)}</span>
+                        <span style={{ fontSize:9, color:'#8899bb', textAlign:'center' }}>{fmtD(g?.plan_start)}</span>
+                        <span style={{ fontSize:9, color:'#60a5fa', textAlign:'center' }}>{fmtD(g?.plan_end)}</span>
+                        <span style={{ fontSize:9, textAlign:'center',
+                          color: pct>=1?'#4ade80':pct>0?'#fbbf24':'#8899bb' }}>{st.l}</span>
+                      </div>
+                    )
+                  })}
+                  {/* Tổng nhóm */}
+                  <div style={{ display:'grid', gridTemplateColumns:'28px 2fr 65px 55px 55px 55px 80px',
+                    padding:'6px 10px', gap:4, alignItems:'center',
+                    background:`${group.color}22`, borderTop:`1px solid ${group.color}44` }}>
+                    <span/><span style={{ fontSize:10, fontWeight:700, color:group.color }}>Tổng nhóm</span>
+                    <span/>
+                    <span style={{ fontSize:11, fontFamily:'monospace', textAlign:'center',
+                      fontWeight:700, color:group.color }}>
+                      {fp(groupItems.reduce((s:number,it:any)=>s+itemPct(it,progressMap)*it.weight,0)/
+                         groupItems.reduce((s:number,it:any)=>s+it.weight,0))}
+                    </span>
+                    <span/><span/><span/>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+
+                {/* Đang thực hiện */}
+        {doingItems.length > 0 && (
+          <div style={{ marginTop:14 }}>
+            <div style={{ fontSize:12, fontWeight:700, color:'#c0d0ef', marginBottom:8,
+              display:'flex', alignItems:'center', gap:6 }}>
+              <span style={{ background:'#fbbf24', width:8, height:8, borderRadius:'50%', display:'inline-block' }}/>
+              🔄 Đang thực hiện ({doingItems.length})
+            </div>
+            <div style={{ borderRadius:8, border:'1px solid #ffffff10',
+              overflowX:'auto', WebkitOverflowScrolling:'touch' as any }}>
+              <div style={{ minWidth:380 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'32px 1fr 60px 1fr 52px',
+                  padding:'6px 10px', background:'#1a2d5a',
+                  fontSize:9, fontWeight:600, color:'#8899bb', gap:4 }}>
+                  <span>#</span><span>Hạng mục</span><span>Khu vực</span>
+                  <span>Tiến độ</span><span style={{ textAlign:'center' }}>HT KH</span>
+                </div>
+                {doingItems.map((it, idx) => {
+                  const pct = itemPct(it, progressMap)
+                  const z   = zones.find(zn => zn.id === it.zone_id)
+                  const g   = ganttMap[it.id]
+                  return (
+                    <div key={it.id} style={{ display:'grid',
+                      gridTemplateColumns:'32px 1fr 60px 1fr 52px',
+                      padding:'6px 10px', gap:4, alignItems:'center',
+                      background: idx%2===0 ? '#fbbf2412' : 'transparent',
+                      borderTop:'1px solid #ffffff08' }}>
+                      <span style={{ fontSize:10, color:'#8899bb' }}>{it.stt}</span>
+                      <span style={{ fontSize:11, color:'#c8d8f0',
+                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.name}</span>
+                      <span style={{ fontSize:9, color:z?.color }}>{z?.label}</span>
+                      <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                        <div style={{ flex:1, height:4, background:'#ffffff15', borderRadius:2, overflow:'hidden' }}>
+                          <div style={{ height:'100%', width:`${pct*100}%`, background:'#fbbf24', borderRadius:2 }}/>
+                        </div>
+                        <span style={{ fontSize:9, color:'#fbbf24', flexShrink:0, fontFamily:'monospace' }}>{fp(pct)}</span>
+                      </div>
+                      <span style={{ fontSize:9, color:'#60a5fa', textAlign:'center' }}>{fmtD(g?.plan_end)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tuần tới */}
+        <div style={{ marginTop:14 }}>
+          <div style={{ fontSize:12, fontWeight:700, color:'#c0d0ef', marginBottom:8,
+            display:'flex', alignItems:'center', gap:6 }}>
+            <span style={{ background:'#60a5fa', width:8, height:8, borderRadius:'50%', display:'inline-block' }}/>
+            📋 Công việc tuần tới ({nextMonStr} - {nextSunStr})
+          </div>
+          {nextItems.length > 0 ? (
+            <div style={{ borderRadius:8, border:'1px solid #ffffff10',
+              overflowX:'auto', WebkitOverflowScrolling:'touch' as any }}>
+              <div style={{ minWidth:340 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'32px 1fr 60px 52px 52px',
+                  padding:'6px 10px', background:'#1a2d5a',
+                  fontSize:9, fontWeight:600, color:'#8899bb', gap:4 }}>
+                  <span>#</span><span>Hạng mục</span><span>Khu vực</span>
+                  <span style={{ textAlign:'center' }}>BD KH</span>
+                  <span style={{ textAlign:'center' }}>HT KH</span>
+                </div>
+                {nextItems.map((it, idx) => {
+                  const z = zones.find(zn => zn.id === it.zone_id)
+                  const g = ganttMap[it.id]
+                  return (
+                    <div key={it.id} style={{ display:'grid',
+                      gridTemplateColumns:'32px 1fr 60px 52px 52px',
+                      padding:'6px 10px', gap:4, alignItems:'center',
+                      background: idx%2===0 ? '#60a5fa10' : 'transparent',
+                      borderTop:'1px solid #ffffff08' }}>
+                      <span style={{ fontSize:10, color:'#8899bb' }}>{it.stt}</span>
+                      <span style={{ fontSize:11, color:'#c8d8f0',
+                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.name}</span>
+                      <span style={{ fontSize:9, color:z?.color }}>{z?.label}</span>
+                      <span style={{ fontSize:9, color:'#8899bb', textAlign:'center' }}>{fmtD(g?.plan_start)}</span>
+                      <span style={{ fontSize:9, color:'#60a5fa', textAlign:'center' }}>{fmtD(g?.plan_end)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding:'10px 14px', borderRadius:8, fontSize:11,
+              background:'#ffffff08', color:'#8899bb', border:'1px solid #ffffff10' }}>
+              ✅ Không có công việc nào trong tuần tới
+            </div>
+          )}
+        </div>
+
+        <div style={{ textAlign:'center', marginTop:20, fontSize:10, color:'#ffffff25' }}>
+          HTE Managed Services · Solar Tiến Độ · Chỉ xem
         </div>
       </main>
     </div>
