@@ -251,8 +251,6 @@ export default function ProjectsPage() {
             ['Chủ đầu tư',            'client',     'text',   'Công ty...'],
             ['Nhà máy (nơi lắp đặt)', 'location',   'text',   'VD: Nhà máy ABC'],
             ['Nhà thầu',              'contractor', 'text',   'TTCE-HTE'],
-            ['Ngày bắt đầu',          'start_date', 'date',   ''],
-            ['Số ngày thi công',      'total_days', 'number', '60'],
           ].map(([label, key, type, ph]) => (
             <div key={key} style={{ marginBottom:10 }}>
               <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:3 }}>{label}</label>
@@ -380,7 +378,6 @@ export default function ProjectsPage() {
                     ['Chủ đầu tư','client','Công ty...','text'],
                     ['Nhà máy (nơi lắp đặt)','location','VD: Nhà máy Dệt Sợi ABC','text'],
                     ['Nhà thầu','contractor','TTCE-HTE','text'],
-                    ['Số ngày thi công','total_days','60','number'],
                   ].map(([lbl,key,ph,type]) => (
                     <div key={key}>
                       <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:4 }}>{lbl}</label>
