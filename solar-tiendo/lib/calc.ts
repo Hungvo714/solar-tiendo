@@ -54,6 +54,37 @@ export function elapsedDays(startDate: string) {
   return Math.max(0, Math.floor((Date.now() - new Date(startDate).getTime()) / 86400000))
 }
 
+export function getProjectDates(items: any[], ganttMap: Record<string, any>) {
+  // BD dự án = ngày BD của mục Chuẩn bị mặt bằng (stt=24) hoặc Bàn giao mặt bằng mái (stt=26)
+  const startItem = items.find(it => it.stt === 24) || items.find(it => it.stt === 26)
+  const endItem   = items.find(it => it.stt === 55) // COD
+
+  const startG = startItem ? ganttMap[startItem.id] : null
+  const endG   = endItem   ? ganttMap[endItem.id]   : null
+
+  const startDate = startG?.actual_start || startG?.plan_start || null
+  const endDate   = endG?.actual_end     || endG?.plan_end     || null
+
+  const now = new Date(); now.setHours(0,0,0,0)
+
+  let totalDays = 60
+  let elapsedDays = 0
+  let weekNum = 1
+
+  if (startDate) {
+    const sd = new Date(startDate); sd.setHours(0,0,0,0)
+    elapsedDays = Math.max(0, Math.floor((now.getTime() - sd.getTime()) / 86400000))
+    if (endDate) {
+      const ed = new Date(endDate); ed.setHours(0,0,0,0)
+      totalDays = Math.max(1, Math.floor((ed.getTime() - sd.getTime()) / 86400000))
+    }
+    // Tuần số = số tuần từ BD dự án đến hôm nay
+    weekNum = Math.ceil((elapsedDays + 1) / 7)
+  }
+
+  return { startDate, endDate, totalDays, elapsedDays, weekNum }
+}
+
 export function ganttBar(g: GanttDate | undefined, startDate: string, totalDays: number) {
   if (!g?.plan_start || !g?.plan_end) return null
   const ps = new Date(startDate).getTime()
