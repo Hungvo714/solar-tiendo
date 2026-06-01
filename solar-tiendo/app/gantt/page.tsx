@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { itemPct, elapsedDays } from '@/lib/calc'
+import { itemPct, elapsedDays, getProjectDates } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
 import { getItemsWithSteps, getZones, getProgress, getGanttDates } from '@/lib/queries'
 
@@ -55,9 +55,9 @@ export default function GanttPage() {
     window.location.href = `${path}?project=${projectId}`
   }
 
-  const total      = project?.total_days ?? 60
-  const startDate  = project?.start_date ?? new Date().toISOString().split('T')[0]
-  const el         = elapsedDays(startDate)
+  const { totalDays: total, startDate: projStart,
+          elapsedDays: el } = getProjectDates(items as any[], ganttMap)
+  const startDate = projStart ?? new Date().toISOString().split('T')[0]
   const todayPct   = Math.min(100, (el / total) * 100)
   const NAME_W     = isMobile ? 130 : 200
   const TIMELINE_W = isMobile ? 600 : undefined
