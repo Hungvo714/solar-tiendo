@@ -18,6 +18,7 @@ export default function DashboardPage() {
   const [items,       setItems]       = useState<Item[]>([])
   const [progressMap, setProgressMap] = useState<Record<string, Progress>>({})
   const [loading,     setLoading]     = useState(true)
+  const [ganttMap,    setGanttMap]    = useState<Record<string, any>>({})
   const [projectId,   setProjectId]   = useState('')
 
   useEffect(() => {
@@ -25,15 +26,18 @@ export default function DashboardPage() {
     if (!pid) { window.location.href = '/projects'; return }
     setProjectId(pid)
     async function load() {
-      const [{ data: proj }, z, it, pr] = await Promise.all([
+      const [{ data: proj }, z, it, pr, gd] = await Promise.all([
         supabase.from('projects').select('*').eq('id', pid).single(),
-        getZones(), getItemsWithSteps(), getProgress(pid),
+        getZones(), getItemsWithSteps(), getProgress(pid), getGanttDates(pid),
       ])
       if (!proj) { window.location.href = '/projects'; return }
       setProject(proj); setZones(z); setItems(it as Item[])
       const pm: Record<string, Progress> = {}
       for (const p of pr) pm[(p as Progress).step_id] = p as Progress
       setProgressMap(pm)
+      const gm: Record<string, any> = {}
+      for (const g of gd) gm[(g as any).item_id] = g
+      setGanttMap(gm)
       setLoading(false)
     }
     load()
