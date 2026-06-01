@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { itemPct, zonePct, totalPct, fp, statusOf } from '@/lib/calc'
+import { itemPct, zonePct, totalPct, fp, statusOf, getProjectDates } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
 import { getItemsWithSteps, getZones, getProgress, getGanttDates } from '@/lib/queries'
 
@@ -34,9 +34,6 @@ export default function ReportPage() {
     const pid = new URLSearchParams(window.location.search).get('project') || ''
     if (!pid) { window.location.href = '/projects'; return }
     setProjectId(pid)
-    const now = new Date()
-    const start = new Date(now.getFullYear(), 0, 1)
-    setWeekNum(String(Math.ceil(((now.getTime()-start.getTime())/86400000+start.getDay()+1)/7)))
     async function load() {
       const [{ data: proj }, z, it, pr, gd] = await Promise.all([
         supabase.from('projects').select('*').eq('id', pid).single(),
@@ -61,6 +58,9 @@ export default function ReportPage() {
         }
         setSubItems(subMap)
       }
+      // Tính tuần số từ ngày BD dự án (mục 24/26)
+      const { weekNum: wn } = getProjectDates(it as any[], gm)
+      setWeekNum(String(wn))
       setLoading(false)
     }
     load()
@@ -180,6 +180,8 @@ export default function ReportPage() {
 
   const tp    = totalPct(items, progressMap)
   const today = new Date().toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})
+  const { startDate: projStart, endDate: projEnd, totalDays: projTotal,
+          elapsedDays: projElapsed } = getProjectDates(items as any[], ganttMap)
 
   const printStyle = `
     @media print {
@@ -284,22 +286,16 @@ export default function ReportPage() {
               <div style={{ textAlign:'right' }}>
                 <div style={{ fontSize:28, fontWeight:700, color:'#F5A623', fontFamily:'monospace' }}>{fp(tp)}</div>
                 <div style={{ fontSize:10, color:'#8899bb' }}>Tổng tiến độ</div>
-                {project && (() => {
-                  const el2 = project.start_date
-                    ? Math.floor((Date.now() - new Date(project.start_date).getTime()) / 86400000)
-                    : 0
-                  const tot2 = project.total_days ?? 60
-                  return (
-                    <div style={{ fontSize:10, marginTop:4,
-                      color: el2 > tot2 ? '#FF8888' : '#8899bb' }}>
-                      {el2 > tot2
-                        ? `🔴 Trễ ${el2 - tot2} ngày`
-                        : el2 === tot2
-                          ? '⏰ Ngày cuối'
-                          : `📅 Ngày ${el2}/${tot2} · Còn ${tot2 - el2} ngày`}
-                    </div>
-                  )
-                })()}
+                {projStart && (
+                  <div style={{ fontSize:10, marginTop:4,
+                    color: projElapsed > projTotal ? '#FF8888' : '#8899bb' }}>
+                    {projElapsed > projTotal
+                      ? `🔴 Trễ ${projElapsed - projTotal} ngày`
+                      : projElapsed === projTotal
+                        ? '⏰ Ngày cuối'
+                        : `📅 Ngày ${projElapsed}/${projTotal} · Còn ${projTotal - projElapsed} ngày`}
+                  </div>
+                )}
               </div>
             </div>
 
