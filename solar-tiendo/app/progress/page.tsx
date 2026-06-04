@@ -367,11 +367,12 @@ export default function ProgressPage() {
                 </span>
                 <span style={{ fontSize:9, padding:'1px 5px', borderRadius:8,
                   background:'#ffffff10', color:'#8899bb' }}>W:{item.weight}</span>
-                {minDate && (
+                {(minDate || maxDate) && (
                   <span style={{ fontSize:9, padding:'1px 5px', borderRadius:8,
                     background:'#fbbf2420', color:'#fbbf24' }}>
-                    Từ {new Date(minDate ?? '').toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}
-                    {maxDate ? ` - ${new Date(maxDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}` : ''}
+                    {minDate ? `Từ ${new Date(minDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}` : ''}
+                    {minDate && maxDate ? ' - ' : ''}
+                    {maxDate ? `${minDate ? '' : 'Đến '}${new Date(maxDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}` : ''}
                   </span>
                 )}
               </div>
