@@ -370,7 +370,8 @@ export default function ProgressPage() {
                 {minDate && (
                   <span style={{ fontSize:9, padding:'1px 5px', borderRadius:8,
                     background:'#fbbf2420', color:'#fbbf24' }}>
-                    Từ {new Date(minDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}
+                    Từ {new Date(dynMinDate ?? minDate ?? '').toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}
+                    {maxDate ? ` - ${new Date(maxDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}` : ''}
                   </span>
                 )}
               </div>
@@ -435,7 +436,9 @@ export default function ProgressPage() {
                 ['actual_start','BD Thực tế'],['actual_end','HT Thực tế']].map(([field, label]) => {
                 const isStart = field==='plan_start' || field==='actual_start'
                 const isEnd   = field==='plan_end'   || field==='actual_end'
-                const min = isStart ? minDate : undefined
+                // Tính lại minDate động (theo ganttMap hiện tại)
+                const dynMinDate = getMinStartDate(item.stt)
+                const min = isStart ? dynMinDate : undefined
                 const max = isEnd   ? maxDate : undefined
                 const val = (ganttMap[item.id] as any)?.[field] ?? ''
                 return (
