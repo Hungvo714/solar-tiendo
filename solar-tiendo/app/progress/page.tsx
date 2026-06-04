@@ -263,8 +263,23 @@ export default function ProgressPage() {
     if (isTCStart && value) {
       const vtDeps = dependencies.filter(d => d.item_stt === item.stt)
       for (const dep of vtDeps) {
-        const vtItem = items.find(it => it.stt === dep.depends_on_stt && (it as any).group_type === 'A')
-        if (!vtItem) continue
+        // Xử lý cả mục thi công phụ thuộc (không chỉ vật tư)
+        const depItem = items.find(it => it.stt === dep.depends_on_stt)
+        if (!depItem) continue
+        const vtItem = (depItem as any).group_type === 'A' ? depItem : null
+        if (!vtItem) {
+          // Mục thi công phụ thuộc → cập nhật HT nếu HT hiện tại >= BD mục dưới
+          const isActual = field === 'actual_start'
+          const tcGantt = ganttMap[depItem.id] as any
+          const tcEnd = isActual ? tcGantt?.actual_end : tcGantt?.plan_end
+          const tcEndField = isActual ? 'actual_end' : 'plan_end'
+          if (tcEnd && tcEnd >= value) {
+            // HT mục trên >= BD mục dưới → cập nhật HT mục trên = BD mục dưới - 1
+            const newEnd = new Date(new Date(value).getTime() - 86400000).toISOString().split('T')[0]
+            await updateGantt(depItem.id, tcEndField, newEnd)
+          }
+          continue
+        }
         const vtGantt = ganttMap[vtItem.id] as any
         const vtEnd = vtGantt?.actual_end || vtGantt?.plan_end
         const orderDays = (vtItem as any).order_days ?? 7
@@ -300,7 +315,27 @@ export default function ProgressPage() {
         }
       }
     }
-    // Lưu ngày thi công
+    // Khi nhập HT thi công → cập nhật HT của các mục phụ thuộc nếu cần sớm hơn
+    const isTCEnd = (field === 'plan_end' || field === 'actual_end')
+      && item.group_type !== 'A'
+
+    if (isTCEnd && value) {
+      const isActual = field === 'actual_end'
+      const endField   = isActual ? 'actual_end'   : 'plan_end'
+      const startField = isActual ? 'actual_start' : 'plan_start'
+      // Tìm các mục phụ thuộc vào item này (mục trên)
+      const depOnMe = dependencies.filter(d => d.depends_on_stt === item.stt)
+      for (const dep of depOnMe) {
+        const depItem = items.find(it => it.stt === dep.item_stt)
+        if (!depItem) continue
+        const depGantt = ganttMap[(depItem as any).id] as any
+        const depStart = depGantt?.[startField]
+        // Nếu mục dưới đã có BD và BD <= HT mới của mục trên → cần cập nhật HT mục trên
+        // Ngược lại không làm gì - chỉ cập nhật constraint (input min) tự động
+      }
+    }
+
+    // Lưu ngày thi công/vật tư
     updateGantt(item.id, field, value)
   }
 
