@@ -367,14 +367,25 @@ export default function ProgressPage() {
                 </span>
                 <span style={{ fontSize:9, padding:'1px 5px', borderRadius:8,
                   background:'#ffffff10', color:'#8899bb' }}>W:{item.weight}</span>
-                {(minDate || maxDate) && (
-                  <span style={{ fontSize:9, padding:'1px 5px', borderRadius:8,
-                    background:'#fbbf2420', color:'#fbbf24' }}>
-                    {minDate ? `Từ ${new Date(minDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}` : ''}
-                    {minDate && maxDate ? ' - ' : ''}
-                    {maxDate ? `${minDate ? '' : 'Đến '}${new Date(maxDate).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})}` : ''}
-                  </span>
-                )}
+                {(() => {
+                  const g = ganttMap[item.id] as any
+                  const bdKH = g?.plan_start
+                  const htKH = g?.plan_end
+                  const bdTT = g?.actual_start
+                  const htTT = g?.actual_end
+                  const fmtShort = (d: string) => new Date(d).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit'})
+                  const kh = bdKH || htKH ? `KH: ${bdKH ? fmtShort(bdKH) : '?'} - Đến ${htKH ? fmtShort(htKH) : '?'}` : null
+                  const tt = bdTT || htTT ? `TT: ${bdTT ? fmtShort(bdTT) : '?'} - Đến ${htTT ? fmtShort(htTT) : '?'}` : null
+                  if (!kh && !tt) return null
+                  return (
+                    <span style={{ fontSize:9, padding:'2px 6px', borderRadius:8,
+                      background:'#1a2d5a', color:'#8899bb', lineHeight:1.6,
+                      display:'flex', flexDirection:'column', gap:1 }}>
+                      {kh && <span style={{ color:'#60a5fa' }}>{kh}</span>}
+                      {tt && <span style={{ color:'#4ade80' }}>{tt}</span>}
+                    </span>
+                  )
+                })()}
               </div>
             </div>
           </div>
