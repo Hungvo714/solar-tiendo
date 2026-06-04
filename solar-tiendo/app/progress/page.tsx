@@ -336,9 +336,6 @@ export default function ProgressPage() {
     const st   = statusOf(pct)
     const open = !!expanded[item.id]
     const steps = (item.steps ?? []).sort((a: any, b: any) => a.step_index - b.step_index)
-    const minDate = getMinStartDate(item.stt)
-    const maxDate = getMaxEndDate(item.stt)
-
     return (
       <div key={item.id} style={{ background:'#0d1b3e',
         border: `1px solid ${open ? z?.color ?? '#ffffff15' : '#ffffff10'}`,
@@ -449,7 +446,7 @@ export default function ProgressPage() {
                 const isStart = field==='plan_start' || field==='actual_start'
                 const isEnd   = field==='plan_end'   || field==='actual_end'
                 const min = isStart ? getMinStartDate(item.stt) : undefined
-                const max = isEnd   ? maxDate : undefined
+                const max = isEnd   ? getMaxEndDate(item.stt) : undefined
                 const val = (ganttMap[item.id] as any)?.[field] ?? ''
                 return (
                   <div key={field} style={{ display:'flex', flexDirection:'column', gap:3, flex:1, minWidth:130 }}>
