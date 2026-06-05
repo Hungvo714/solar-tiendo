@@ -6,10 +6,12 @@ import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
 import { getItemsWithSteps, getZones, getProgress, getGanttDates, upsertProgress, upsertGantt } from '@/lib/queries'
 
 const TABS = [
-  { path:'/dashboard', icon:'ti-layout-dashboard', label:'Tổng quan' },
-  { path:'/progress',  icon:'ti-checklist',        label:'Tiến độ'   },
-  { path:'/gantt',     icon:'ti-calendar-event',   label:'Gantt'     },
-  { path:'/report',    icon:'ti-file-description', label:'Báo cáo'   },
+  { path:'/dashboard',    icon:'ti-layout-dashboard', label:'Tổng quan'  },
+  { path:'/progress',     icon:'ti-checklist',        label:'Tiến độ'    },
+  { path:'/gantt',        icon:'ti-calendar-event',   label:'Gantt'      },
+  { path:'/report',       icon:'ti-file-description', label:'Báo cáo'    },
+  { path:'/labor',        icon:'ti-users',            label:'Nhân lực'   },
+  { path:'/productivity', icon:'ti-chart-line',       label:'Hiệu suất'  },
 ]
 
 const GROUPS = [
@@ -163,6 +165,55 @@ export default function ProgressPage() {
       if (!minDate || d < minDate) minDate = d
     }
     return minDate ? minDate.toISOString().split('T')[0] : undefined
+  }
+
+  async function updateStepPct(stepId: string, pct: number, item?: any) {
+    const isDone = pct >= 100
+    setProgressMap(prev => ({
+      ...prev,
+      [stepId]: { ...prev[stepId], step_id: stepId, project_id: projectId,
+        is_done: isDone, is_na: false, progress_pct: pct } as any
+    }))
+    await supabase.from('progress').upsert({
+      step_id: stepId, project_id: projectId,
+      is_done: isDone, is_na: false, progress_pct: pct
+    }, { onConflict: 'step_id,project_id' })
+    if (isDone && item) await handleAutoComplete(stepId, item)
+  }
+
+  async function handleAutoComplete(stepId: string, item: any) {
+    const steps = item.steps ?? []
+    const allDone = steps.every((s: any) =>
+      s.id === stepId ? true : !!progressMap[s.id]?.is_done || !!progressMap[s.id]?.is_na
+    )
+    if (!allDone) return
+    const today = new Date().toISOString().split('T')[0]
+    if (item.group_type !== 'A') {
+      const vtDeps = dependencies.filter(d => d.item_stt === item.stt)
+      for (const dep of vtDeps) {
+        const vtItem = items.find((it: any) => it.stt === dep.depends_on_stt && it.group_type === 'A')
+        if (!vtItem) continue
+        const vtPct = itemPct(vtItem, progressMap)
+        if (vtPct < 1) {
+          const vtSteps = (vtItem as any).steps ?? []
+          for (const vs of vtSteps) {
+            if (!progressMap[vs.id]?.is_done) {
+              setProgressMap(prev => ({
+                ...prev,
+                [vs.id]: { ...prev[vs.id], step_id: vs.id, project_id: projectId,
+                  is_done: true, is_na: false, progress_pct: 100 } as any
+              }))
+              await supabase.from('progress').upsert({
+                step_id: vs.id, project_id: projectId,
+                is_done: true, is_na: false, progress_pct: 100
+              }, { onConflict: 'step_id,project_id' })
+            }
+          }
+          const vtGantt = ganttMap[vtItem.id] as any
+          if (!vtGantt?.actual_end) await updateGantt(vtItem.id, 'actual_end', today)
+        }
+      }
+    }
   }
 
   async function toggleStep(stepId: string, isDone: boolean, item?: any) {
@@ -437,6 +488,40 @@ export default function ProgressPage() {
         {/* Body */}
         {open && (
           <div style={{ borderTop:`1px solid ${z?.color ?? '#ffffff15'}`, padding:12 }}>
+            {/* Volume/Unit - nhóm B/C */}
+            {(item as any).group_type !== 'A' && !isViewer && (
+              <div style={{ display:'flex', alignItems:'center', gap:8,
+                marginBottom:8, padding:'6px 10px', borderRadius:7,
+                background:'#1a2d5a30', border:'1px solid #4472C430' }}>
+                <span style={{ fontSize:10, color:'#8899bb' }}>📦 Khối lượng:</span>
+                <input type="number" min="0"
+                  defaultValue={(item as any).volume ?? ''}
+                  placeholder="0"
+                  onBlur={async e => {
+                    const vol = parseFloat(e.target.value) || null
+                    await supabase.from('items').update({ volume: vol }).eq('id', item.id)
+                    setItems(prev => prev.map(it =>
+                      it.id === item.id ? { ...it, volume: vol } as any : it
+                    ))
+                  }}
+                  style={{ width:70, background:'#0a0f1e', border:'1px solid #ffffff20',
+                    borderRadius:5, padding:'3px 6px', color:'#60a5fa',
+                    fontFamily:'monospace', fontSize:12, outline:'none', textAlign:'center' }}/>
+                <input type="text"
+                  defaultValue={(item as any).unit ?? ''}
+                  placeholder="đơn vị"
+                  onBlur={async e => {
+                    const unit = e.target.value || null
+                    await supabase.from('items').update({ unit } as any).eq('id', item.id)
+                    setItems(prev => prev.map(it =>
+                      it.id === item.id ? { ...it, unit } as any : it
+                    ))
+                  }}
+                  style={{ width:60, background:'#0a0f1e', border:'1px solid #ffffff20',
+                    borderRadius:5, padding:'3px 6px', color:'#60a5fa',
+                    fontFamily:'monospace', fontSize:12, outline:'none' }}/>
+              </div>
+            )}
             {/* Order days - chỉ nhóm A */}
             {(item as any).group_type === 'A' && !isViewer && (
               <div style={{ display:'flex', alignItems:'center', gap:8,
@@ -565,6 +650,22 @@ export default function ProgressPage() {
                         fontSize:10, color:'#4ade80' }}>
                       {done && '✓'}
                     </div>
+                    {!isViewer && !na && (
+                      <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                        <input type="number" min="0" max="100"
+                          value={(progressMap[step.id] as any)?.progress_pct ?? (done ? 100 : 0)}
+                          onChange={async e => {
+                            const pct = Math.min(100, Math.max(0, parseInt(e.target.value)||0))
+                            await updateStepPct(step.id, pct, item)
+                          }}
+                          style={{ width:40, background:'#0a0f1e',
+                            border:'1px solid #ffffff20', borderRadius:5,
+                            padding:'1px 4px', color:'#e8eaf0',
+                            fontFamily:'monospace', fontSize:11,
+                            outline:'none', textAlign:'center' }}/>
+                        <span style={{ fontSize:10, color:'#8899bb' }}>%</span>
+                      </div>
+                    )}
                     <span style={{ flex:1, fontSize:11,
                       color: na ? '#8899bb' : '#c0d0ef',
                       textDecoration: done || na ? 'line-through' : 'none' }}>
