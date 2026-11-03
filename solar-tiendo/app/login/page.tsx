@@ -83,7 +83,8 @@ export default function LoginPage() {
           </button>
         </form>
         <div style={{ textAlign:'center', marginTop:16, fontSize:11, color:'#8899bb' }}>
-          Chưa có tài khoản? Liên hệ quản trị viên.
+          Chưa có tài khoản?{' '}
+          <a href="/register" style={{ color:'#F5A623', textDecoration:'none', fontWeight:600 }}>Đăng ký</a>
         </div>
       </div>
     </div>

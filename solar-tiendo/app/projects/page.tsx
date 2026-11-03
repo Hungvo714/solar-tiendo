@@ -6,7 +6,8 @@ type Project = {
   id: string; name: string; client: string; contractor: string
   start_date: string; total_days: number; role?: string
 }
-type Member = { user_id: string; role: string }
+type Member = { user_id: string; role: string; email?: string|null; full_name?: string|null }
+type Pending = { id: string; email: string|null; full_name: string|null; phone: string|null; company: string|null; created_at: string }
 
 export default function ProjectsPage() {
   const [projects,  setProjects]  = useState<Project[]>([])
@@ -24,6 +25,9 @@ export default function ProjectsPage() {
   const [myUserId,  setMyUserId]  = useState<string|null>(null)
   const [isAdmin,   setIsAdmin]   = useState(false)
   const [newUserInfo,  setNewUserInfo]  = useState<{email:string,pass:string}|null>(null)
+  const [pending,      setPending]      = useState<Pending[]>([])
+  const [approveSel,   setApproveSel]   = useState<Record<string,{pid:string,role:string}>>({})
+  const [approving,    setApproving]    = useState<string|null>(null)
   const [editProject,  setEditProject]  = useState<any|null>(null)
   const [editForm,     setEditForm]     = useState({ name:'', client:'', contractor:'', location:'', start_date:'', total_days:'' })
   const [form, setForm] = useState({
@@ -54,10 +58,15 @@ export default function ProjectsPage() {
       // Check xem có phải admin của ít nhất 1 dự án không
       const hasAdminRole = list.some((p: any) => p.role === 'admin')
       setIsAdmin(hasAdminRole)
+      if (hasAdminRole) loadPending()
 
       // Nếu không có dự án nào → user bị xoá khỏi tất cả project
       // Đăng xuất và thông báo
       if (list.length === 0) {
+        // Tài khoản tự đăng ký đang chờ duyệt → trang chờ (không đăng xuất)
+        const { data: prof } = await supabase.from('profiles')
+          .select('status').eq('id', user.id).maybeSingle()
+        if (prof && prof.status !== 'approved') { window.location.href = '/pending'; return }
         await supabase.auth.signOut()
         window.location.href = '/login?msg=no-access'
         return
@@ -104,9 +113,45 @@ export default function ProjectsPage() {
 
   async function loadMembers(pid: string) {
     const { data } = await supabase.from('project_members').select('*').eq('project_id', pid)
-    setMembers((data ?? []) as Member[])
+    const list = (data ?? []) as Member[]
+    // Lấy email / họ tên để hiển thị (bảng profiles — nếu chưa chạy SQL thì bỏ qua)
+    const ids = list.map(m => m.user_id)
+    if (ids.length) {
+      const { data: profs } = await supabase.from('profiles').select('id,email,full_name').in('id', ids)
+      const byId: Record<string, any> = {}
+      ;(profs ?? []).forEach((p: any) => { byId[p.id] = p })
+      list.forEach(m => { m.email = byId[m.user_id]?.email; m.full_name = byId[m.user_id]?.full_name })
+    }
+    setMembers(list)
     setShowMembers(pid)
   }
+
+  async function loadPending() {
+    const { data, error } = await supabase.rpc('list_pending_users')
+    if (!error) setPending((data ?? []) as Pending[])
+  }
+
+  async function approvePending(uid: string) {
+    const sel = approveSel[uid]
+    const pid = sel?.pid || adminProjects()[0]?.id
+    const role = sel?.role || 'editor'
+    if (!pid) { alert('Bạn chưa là Admin của dự án nào'); return }
+    setApproving(uid)
+    const { error } = await supabase.rpc('approve_user', { target_user: uid, target_project: pid, target_role: role })
+    setApproving(null)
+    if (error) { alert('Lỗi: ' + error.message); return }
+    loadPending()
+    if (showMembers === pid) loadMembers(pid)
+  }
+
+  async function rejectPending(uid: string, email: string|null) {
+    if (!confirm(`Từ chối tài khoản ${email ?? ''}?`)) return
+    const { error } = await supabase.rpc('reject_user', { target_user: uid })
+    if (error) { alert('Lỗi: ' + error.message); return }
+    loadPending()
+  }
+
+  function adminProjects() { return projects.filter(p => p.role === 'admin') }
 
   function openEditProject(proj: any) {
     setEditProject(proj)
@@ -162,26 +207,16 @@ export default function ProjectsPage() {
         const w2 = Math.floor(Math.random()*9000)+1000
         const pass = newPass || `${w1}${w2}!`
         
-        // Lưu session admin hiện tại
-        const { data: { session: adminSession } } = await supabase.auth.getSession()
-        
-        const { data, error } = await supabase.auth.signUp({
-          email: newEmail, password: pass
+        // Tạo tài khoản qua API phía máy chủ (đã xác nhận email, đăng nhập được ngay)
+        const { data: { session } } = await supabase.auth.getSession()
+        const res = await fetch('/api/admin/create-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token ?? ''}` },
+          body: JSON.stringify({ email: newEmail.trim(), password: pass, projectId: pid, role: newRole }),
         })
-        
-        // Khôi phục session admin ngay lập tức
-        if (adminSession) {
-          await supabase.auth.setSession({
-            access_token: adminSession.access_token,
-            refresh_token: adminSession.refresh_token,
-          })
-        }
-        
-        if (error || !data.user) { alert('Lỗi tạo user: ' + error?.message); return }
-        userId = data.user.id
-        await supabase.from('project_members').upsert({
-          project_id: pid, user_id: userId, role: newRole
-        }, { onConflict: 'project_id,user_id' })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) { alert('Lỗi tạo tài khoản: ' + (json.error ?? res.statusText)); return }
+        userId = json.userId
         
         const displayPass = newPass || pass
         setNewUserInfo({ email: newEmail, pass: displayPass })
@@ -366,6 +401,48 @@ export default function ProjectsPage() {
               )}
             </div>
 
+            {/* Tài khoản chờ duyệt */}
+            {isAdmin && pending.length > 0 && (
+              <div style={{ background:'#F5A62310', border:'1px solid #F5A62366', borderRadius:12,
+                padding:14, marginBottom:16 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:'#F5A623', marginBottom:10 }}>
+                  ⏳ Tài khoản chờ duyệt ({pending.length})
+                </div>
+                {pending.map(u => {
+                  const sel = approveSel[u.id] ?? { pid: adminProjects()[0]?.id ?? '', role: 'editor' }
+                  const setSel = (patch: Partial<{pid:string,role:string}>) =>
+                    setApproveSel(prev => ({ ...prev, [u.id]: { ...sel, ...patch } }))
+                  return (
+                    <div key={u.id} style={{ background:'#0d1b3e', borderRadius:9, padding:10, marginBottom:8 }}>
+                      <div style={{ fontSize:12, fontWeight:600, color:'#e8eaf0' }}>
+                        {u.full_name || '(chưa có tên)'} <span style={{ color:'#8899bb', fontWeight:400 }}>· {u.email}</span>
+                      </div>
+                      <div style={{ fontSize:10, color:'#8899bb', margin:'2px 0 8px' }}>
+                        {[u.phone, u.company].filter(Boolean).join(' · ') || '—'}
+                        {' · đăng ký '}{new Date(u.created_at).toLocaleDateString('vi-VN')}
+                      </div>
+                      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                        <select value={sel.pid} onChange={e => setSel({ pid: e.target.value })}
+                          style={{ ...S.inp, flex:'2 1 160px', width:'auto' }}>
+                          {adminProjects().map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                        <select value={sel.role} onChange={e => setSel({ role: e.target.value })}
+                          style={{ ...S.inp, flex:'1 1 110px', width:'auto' }}>
+                          <option value="editor">✏️ Editor</option>
+                          <option value="viewer">👁 Viewer</option>
+                          <option value="admin">👑 Admin</option>
+                        </select>
+                        <button onClick={() => approvePending(u.id)} disabled={approving === u.id}
+                          style={S.btn('#375623','#fff')}>{approving === u.id ? '⏳' : '✓ Duyệt'}</button>
+                        <button onClick={() => rejectPending(u.id, u.email)}
+                          style={S.btn('#FF444415','#FF8888')}>✕ Từ chối</button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
             {/* Create Form */}
             {showForm && isAdmin && (
               <div style={{ background:'#0d1b3e', border:'1px solid #F5A623',
@@ -483,7 +560,8 @@ export default function ProjectsPage() {
                           </div>
                           <div style={{ flex:1, fontSize:11, color:'#c0d0ef', overflow:'hidden',
                             textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                            {m.user_id === myUserId ? 'Bạn' : m.user_id.slice(0,12)+'...'}
+                            {m.user_id === myUserId ? 'Bạn'
+                              : (m.full_name ? `${m.full_name} · ` : '') + (m.email ?? m.user_id.slice(0,12)+'...')}
                           </div>
                           <select value={m.role}
                             onChange={e => changeRole(proj.id, m.user_id, e.target.value)}
@@ -515,7 +593,7 @@ export default function ProjectsPage() {
                           </div>
                           <div>
                             <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:3 }}>
-                              Mật khẩu <span style={{ color:'#ffffff40' }}>(để trống → gửi email mời)</span>
+                              Mật khẩu <span style={{ color:'#ffffff40' }}>(để trống → tự tạo)</span>
                             </label>
                             <input type="text" value={newPass} placeholder="Để trống nếu user mới..."
                               onChange={e => setNewPass(e.target.value)} style={S.inp}/>
