@@ -12,6 +12,7 @@ type Step = { id?: string; name: string; weight: number }
 type It = {
   id: string; stt: number; name: string; zone_id: string; group_type: 'A'|'B'|'C'; weight: number
   order_days?: number; project_id: string|null; hidden: boolean; steps: Step[]
+  no: number | null          // số thứ tự hiển thị liên tục (null nếu bị ẩn)
 }
 type Dep = { item_id: string; depends_on_item_id: string }
 type Zone = { id: string; label: string }
@@ -128,7 +129,7 @@ export default function ItemsConfigPage() {
   const waitingOn = (id: string) => deps.filter(d => d.depends_on_item_id === id).map(d => byId[d.item_id]).filter(i => i && !i.hidden)
 
   const k = q.trim().toLowerCase()
-  const match = (i: It) => !k || String(i.stt) === k || i.name.toLowerCase().includes(k)
+  const match = (i: It) => !k || String(i.no) === k || i.name.toLowerCase().includes(k)
 
   if (!ready) return <div style={{ minHeight:'100vh', background:C.bg, color:C.mute, display:'flex',
     alignItems:'center', justifyContent:'center', fontFamily:'system-ui,sans-serif' }}>Đang tải...</div>
@@ -152,6 +153,7 @@ export default function ItemsConfigPage() {
             await rpc('add_project_item', {
               pid, p_name: f.name, p_zone: f.zone, p_group: f.group, p_weight: f.weight,
               p_steps: f.steps, p_depends: f.depends, p_order_days: f.orderDays,
+              p_after: f.after || null,
             })
             setAdding(false)
           })}/>
@@ -160,6 +162,12 @@ export default function ItemsConfigPage() {
         <ItemModal zones={zones} items={visible} busy={busy} edit={editItem} onClose={() => setEditItem(null)}
           onSave={(f) => run(async () => {
             await rpc('update_project_item', { p_item: editItem.id, p_name: f.name, p_zone: f.zone, p_weight: f.weight })
+            // Đổi vị trí nếu chọn mốc khác
+            const idx = visible.findIndex(i => i.id === editItem.id)
+            const prevId = idx > 0 ? visible[idx - 1].id : ''
+            if (f.after && f.after !== prevId) {
+              await rpc('move_project_item', { pid, p_item: editItem.id, p_after: f.after })
+            }
             setEditItem(null)
           })}/>
       )}
@@ -210,7 +218,7 @@ export default function ItemsConfigPage() {
                     borderRadius:10, padding:'10px 12px', marginBottom:6 }}>
                     <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
                       <div style={{ width:30, flexShrink:0, fontWeight:700, color:GROUP[g].c, fontFamily:'monospace', fontSize:13 }}>
-                        {it.stt}
+                        {it.no}
                       </div>
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:13, fontWeight:600 }}>
@@ -225,7 +233,7 @@ export default function ItemsConfigPage() {
                           <span style={{ color:C.mute }}>Chờ:</span>
                           {ds.length === 0 ? <span style={{ color:'#ffffff40' }}>—</span> : ds.map(d => (
                             <span key={d.id} title={d.name} style={{ background:'#ffffff0d', borderRadius:5, padding:'1px 6px',
-                              color:GROUP[d.group_type]?.c ?? C.text }}>#{d.stt}</span>
+                              color:GROUP[d.group_type]?.c ?? C.text }}>#{d.no}</span>
                           ))}
                           {hiddenDeps.length > 0 && (
                             <span style={{ color:'#ffffff40' }} title="Các mục này đang bị ẩn nên không áp dụng">
@@ -244,8 +252,8 @@ export default function ItemsConfigPage() {
                         )}
                         <button disabled={busy} onClick={() => {
                           const msg = wo.length
-                            ? `Ẩn mục #${it.stt} "${it.name}"?\n\nCó ${wo.length} mục đang chờ mục này (${wo.map(w => '#' + w.stt).join(', ')}). Điều kiện đó sẽ tạm không áp dụng khi mục bị ẩn.`
-                            : `Ẩn mục #${it.stt} "${it.name}" khỏi dự án?`
+                            ? `Ẩn mục #${it.no} "${it.name}"?\n\nCó ${wo.length} mục đang chờ mục này (${wo.map(w => '#' + w.no).join(', ')}). Điều kiện đó sẽ tạm không áp dụng khi mục bị ẩn.\n\nSố thứ tự các mục phía sau sẽ tự dồn lên.`
+                            : `Ẩn mục #${it.no} "${it.name}" khỏi dự án?\n\nSố thứ tự các mục phía sau sẽ tự dồn lên.`
                           if (confirm(msg)) run(() => rpc('set_item_hidden', { pid, p_item: it.id, p_hidden: true }))
                         }} style={btn('#FF444415', '#FF8888')}>🙈 Ẩn</button>
                       </div>
@@ -268,7 +276,7 @@ export default function ItemsConfigPage() {
               {hidden.map(it => (
                 <div key={it.id} style={{ display:'flex', gap:10, alignItems:'center', padding:'8px 12px',
                   background:'#ffffff06', borderRadius:8, marginBottom:5 }}>
-                  <div style={{ width:30, fontFamily:'monospace', color:C.mute }}>{it.stt}</div>
+                  <div style={{ width:30, fontFamily:'monospace', color:'#ffffff30' }}>—</div>
                   <div style={{ flex:1, color:C.mute, fontSize:12 }}>{it.name}</div>
                   <button disabled={busy} onClick={() => run(() => rpc('set_item_hidden', { pid, p_item: it.id, p_hidden: false }))}
                     style={btn('#375623', '#fff')}>↩ Khôi phục</button>
@@ -288,7 +296,7 @@ function DepPicker({ items, selfId, value, onChange }: {
 }) {
   const [q, setQ] = useState('')
   const k = q.trim().toLowerCase()
-  const list = items.filter(i => i.id !== selfId && (!k || String(i.stt) === k || i.name.toLowerCase().includes(k)))
+  const list = items.filter(i => i.id !== selfId && (!k || String(i.no) === k || i.name.toLowerCase().includes(k)))
   const toggle = (id: string) => onChange(value.includes(id) ? value.filter(x => x !== id) : [...value, id])
   return (
     <div>
@@ -298,7 +306,7 @@ function DepPicker({ items, selfId, value, onChange }: {
           <label key={i.id} style={{ display:'flex', gap:8, alignItems:'center', padding:'5px 6px', borderRadius:6,
             cursor:'pointer', background: value.includes(i.id) ? '#4472C422' : 'transparent', fontSize:12 }}>
             <input type="checkbox" checked={value.includes(i.id)} onChange={() => toggle(i.id)}/>
-            <span style={{ width:28, fontFamily:'monospace', color:GROUP[i.group_type]?.c }}>#{i.stt}</span>
+            <span style={{ width:28, fontFamily:'monospace', color:GROUP[i.group_type]?.c }}>#{i.no}</span>
             <span style={{ flex:1 }}>{i.name}</span>
           </label>
         ))}
@@ -306,7 +314,7 @@ function DepPicker({ items, selfId, value, onChange }: {
       </div>
       <div style={{ fontSize:11, color:C.mute, marginTop:6 }}>
         Đã chọn: {value.length === 0 ? 'không chờ mục nào' :
-          items.filter(i => value.includes(i.id)).sort((a, b) => a.stt - b.stt).map(i => '#' + i.stt).join(', ')}
+          items.filter(i => value.includes(i.id)).sort((a, b) => (a.no ?? 0) - (b.no ?? 0)).map(i => '#' + i.no).join(', ')}
       </div>
     </div>
   )
@@ -333,7 +341,7 @@ function DepsModal({ item, items, current, busy, onClose, onSave }: {
 }) {
   const [val, setVal] = useState<string[]>(current)
   return (
-    <Modal title={`🔗 Điều kiện của mục #${item.stt}`} onClose={onClose}>
+    <Modal title={`🔗 Điều kiện của mục #${item.no}`} onClose={onClose}>
       <div style={{ fontSize:12, color:C.mute, marginBottom:10 }}>
         <b style={{ color:C.text }}>{item.name}</b> chỉ được bắt đầu sau khi các mục đánh dấu dưới đây hoàn thành:
       </div>
@@ -349,8 +357,11 @@ function DepsModal({ item, items, current, busy, onClose, onSave }: {
 /* ---------- Thêm / sửa hạng mục ---------- */
 function ItemModal({ zones, items, busy, edit, onClose, onSave }: {
   zones: Zone[]; items: It[]; busy: boolean; edit?: It; onClose: () => void
-  onSave: (f: { name: string; zone: string; group: string; weight: number; orderDays: number; steps: Step[]; depends: string[] }) => void
+  onSave: (f: { name: string; zone: string; group: string; weight: number; orderDays: number; steps: Step[]; depends: string[]; after: string }) => void
 }) {
+  // Vị trí: mặc định cuối danh sách (mục mới) / giữ nguyên (khi sửa)
+  const prevOf = (id: string) => { const idx = items.findIndex(i => i.id === id); return idx > 0 ? items[idx - 1].id : '' }
+  const [after, setAfter] = useState<string>(edit ? prevOf(edit.id) : '')
   const [name, setName]     = useState(edit?.name ?? '')
   const [zone, setZone]     = useState(edit?.zone_id ?? zones[0]?.id ?? '')
   const [group, setGroup]   = useState<'A'|'B'|'C'>(edit?.group_type ?? 'B')
@@ -374,14 +385,14 @@ function ItemModal({ zones, items, busy, edit, onClose, onSave }: {
     if (!edit) {
       const valid = steps.filter(s => s.name.trim())
       if (!valid.length) { alert('Cần ít nhất 1 bước có tên'); return }
-      onSave({ name, zone, group, weight, orderDays, steps: valid.map(s => ({ name: s.name.trim(), weight: Math.max(1, Number(s.weight) || 1) })), depends })
+      onSave({ name, zone, group, weight, orderDays, steps: valid.map(s => ({ name: s.name.trim(), weight: Math.max(1, Number(s.weight) || 1) })), depends, after })
     } else {
-      onSave({ name, zone, group, weight, orderDays, steps: [], depends: [] })
+      onSave({ name, zone, group, weight, orderDays, steps: [], depends: [], after })
     }
   }
 
   return (
-    <Modal title={edit ? `✏️ Sửa mục #${edit.stt}` : '+ Thêm hạng mục mới'} onClose={onClose}>
+    <Modal title={edit ? `✏️ Sửa mục #${edit.no}` : '+ Thêm hạng mục mới'} onClose={onClose}>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
         <div style={{ gridColumn:'1 / -1' }}>
           <label style={{ fontSize:10, color:C.mute }}>Tên hạng mục *</label>
@@ -396,6 +407,16 @@ function ItemModal({ zones, items, busy, edit, onClose, onSave }: {
         <div>
           <label style={{ fontSize:10, color:C.mute }}>Trọng số (độ lớn so với các mục khác)</label>
           <input type="number" min={1} value={weight} onChange={e => setWeight(parseInt(e.target.value) || 1)} style={inp}/>
+        </div>
+        <div style={{ gridColumn:'1 / -1' }}>
+          <label style={{ fontSize:10, color:C.mute }}>Vị trí trong danh sách</label>
+          <select value={after} onChange={e => setAfter(e.target.value)} style={inp}>
+            {!edit && <option value="">— Cuối danh sách —</option>}
+            {edit && after === '' && <option value="">— (giữ nguyên) —</option>}
+            {items.filter(i => i.id !== edit?.id).map(i => (
+              <option key={i.id} value={i.id}>Chèn sau #{i.no} · {i.name}</option>
+            ))}
+          </select>
         </div>
         {!edit && (
           <div>
@@ -439,6 +460,7 @@ function ItemModal({ zones, items, busy, edit, onClose, onSave }: {
       {edit && (
         <div style={{ fontSize:11, color:C.mute, marginBottom:10 }}>
           Sửa điều kiện bằng nút 🔗 Điều kiện. Danh sách bước của mục đã tạo hiện chưa sửa ở đây.
+          <br/>Mục mẫu không đổi vị trí được; chỉ mục thêm riêng mới chọn được vị trí.
         </div>
       )}
 

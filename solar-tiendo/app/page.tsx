@@ -297,7 +297,7 @@ export default function ReportPage() {
                           : (printMode ? '#fff' : 'transparent') }}>
                         <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
                           color: printMode ? '#1a1a2e' : '#c8d8f0', maxWidth:180 }}>
-                          <span style={{ color:z?.color, marginRight:4, fontSize:9 }}>{it.stt}.</span>
+                          <span style={{ color:z?.color, marginRight:4, fontSize:9 }}>{it.no ?? it.stt}.</span>
                           {it.name}
                         </td>
                         <td style={{ padding:'6px 8px', border:'1px solid #ffffff10',
@@ -394,7 +394,7 @@ export default function ReportPage() {
                               background: idx%2===0 ? (z ? z.light+'25' : '#ffffff08') : (printMode ? '#fff' : 'transparent'),
                               borderTop: '1px solid #ffffff08' }}>
                               <span style={{ fontSize:10, color: printMode ? '#1a1a2e' : '#c8d8f0' }}>
-                                <span style={{ color:z?.color, fontSize:9, marginRight:3 }}>{it.stt}.</span>
+                                <span style={{ color:z?.color, fontSize:9, marginRight:3 }}>{it.no ?? it.stt}.</span>
                                 {it.name}
                               </span>
                               <span style={{ fontSize:9, textAlign:'center', color:z?.color }}>{z?.label}</span>

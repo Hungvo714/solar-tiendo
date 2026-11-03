@@ -209,3 +209,10 @@ begin
 end;
 $$;
 grant execute on function public.get_shared_project(text) to anon, authenticated;
+
+-- =====================================================================
+-- (migration project_items_insert_position) Chèn mục mới vào giữa / đổi vị trí
+--   items.sort_order → numeric; add_project_item thêm p_after; move_project_item
+--   (xem nội dung đầy đủ trong lịch sử migration của Supabase)
+-- =====================================================================
+alter table public.items alter column sort_order type numeric using sort_order::numeric;

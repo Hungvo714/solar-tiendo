@@ -209,7 +209,7 @@ export default function DashboardPage() {
                       borderTop:'1px solid #ffffff08', gap:6, alignItems:'center',
                       cursor:'pointer' }}
                       onClick={() => navigate('/progress')}>
-                      <span style={{ fontWeight:700, fontSize:11, color:'#8899bb' }}>{it.stt}</span>
+                      <span style={{ fontWeight:700, fontSize:11, color:'#8899bb' }}>{it.no ?? it.stt}</span>
                       <span style={{ fontSize:11, color:'#c8d8f0',
                         overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.name}</span>
                       <span style={{ display:'flex', alignItems:'center', gap:3, fontSize:10 }}>

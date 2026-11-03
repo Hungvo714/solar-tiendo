@@ -177,7 +177,7 @@ export default function GanttPage() {
                         <div style={{ minWidth:0 }}>
                           <div style={{ fontSize:10, color:'#c8d8f0',
                             overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                            <span style={{ color:'#8899bb', fontSize:9 }}>{item.stt}.</span> {item.name}
+                            <span style={{ color:'#8899bb', fontSize:9 }}>{item.no ?? item.stt}.</span> {item.name}
                           </div>
                           <div style={{ fontSize:9, color: pct>=1?'#4ade80':pct>0?'#fbbf24':'#8899bb' }}>
                             {Math.round(pct*100)}%

@@ -18,7 +18,14 @@ export async function getItemsWithSteps() {
   return data ?? []
 }
 
-const sortItems = (a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.stt - b.stt
+const sortItems = (a: any, b: any) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0) || a.stt - b.stt
+
+// Gắn số thứ tự HIỂN THỊ liên tục 1..N cho các mục đang dùng (mục ẩn: no = null).
+// stt (mã gốc) giữ nguyên cho điều kiện liên quan và các mốc 24/26/55.
+export function numberItems<T extends { hidden?: boolean }>(items: T[]): (T & { no: number | null })[] {
+  let n = 0
+  return items.map(it => ({ ...it, no: it.hidden ? null : ++n }))
+}
 const sortSteps = (it: any) => ({
   ...it,
   steps: [...(it.steps ?? [])].sort((a: any, b: any) =>
@@ -34,7 +41,7 @@ export async function getItemsForProject(projectId: string, opts: { includeHidde
   ])
   const st: Record<string, { order_days: number; hidden: boolean }> = {}
   for (const s of settings ?? []) st[(s as any).item_id] = s as any
-  return (items as any[])
+  const list = (items as any[])
     .filter(it => it.project_id == null || it.project_id === projectId)
     .map(it => ({
       ...sortSteps(it),
@@ -43,6 +50,7 @@ export async function getItemsForProject(projectId: string, opts: { includeHidde
     }))
     .filter(it => opts.includeHidden || !it.hidden)
     .sort(sortItems)
+  return numberItems(list)
 }
 
 // Điều kiện liên quan của dự án.

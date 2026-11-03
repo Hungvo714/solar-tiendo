@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, zonePct, totalPct, fp, statusOf, elapsedDays, getProjectDates } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
-import { getZones } from '@/lib/queries'
+import { getZones, numberItems } from '@/lib/queries'
 
 export default function PublicViewPage() {
   const [project,     setProject]     = useState<Project | null>(null)
@@ -25,7 +25,7 @@ export default function PublicViewPage() {
         getZones(),
       ])
       // Hạng mục đã áp cấu hình của dự án (ẩn mục không dùng, có mục thêm riêng)
-      const it = ((shared as any)?.items ?? []) as any[]
+      const it = numberItems(((shared as any)?.items ?? []) as any[])
       const proj = (shared as any)?.project
       if (!proj) { setNotFound(true); setLoading(false); return }
       const pr = ((shared as any).progress ?? []) as any[]
@@ -311,7 +311,7 @@ export default function PublicViewPage() {
                         padding:'6px 10px', gap:4, alignItems:'start',
                         background: idx%2===0 ? (z ? z.light+'18':'#ffffff08') : 'transparent',
                         borderTop:'1px solid #ffffff08' }}>
-                        <span style={{ fontSize:10, fontWeight:700, color:'#8899bb' }}>{it.stt}</span>
+                        <span style={{ fontSize:10, fontWeight:700, color:'#8899bb' }}>{it.no ?? it.stt}</span>
                         <span style={{ fontSize:11, color:'#c8d8f0',
                           wordBreak:'break-word' as any, lineHeight:1.4 }}>{it.name}</span>
                         <span style={{ fontSize:9, color:z?.color,
@@ -371,7 +371,7 @@ export default function PublicViewPage() {
                       padding:'6px 10px', gap:4, alignItems:'center',
                       background: idx%2===0 ? '#fbbf2412' : 'transparent',
                       borderTop:'1px solid #ffffff08' }}>
-                      <span style={{ fontSize:10, color:'#8899bb' }}>{it.stt}</span>
+                      <span style={{ fontSize:10, color:'#8899bb' }}>{it.no ?? it.stt}</span>
                       <span style={{ fontSize:11, color:'#c8d8f0',
                         overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.name}</span>
                       <span style={{ fontSize:9, color:z?.color }}>{z?.label}</span>
@@ -417,7 +417,7 @@ export default function PublicViewPage() {
                       padding:'6px 10px', gap:4, alignItems:'center',
                       background: idx%2===0 ? '#60a5fa10' : 'transparent',
                       borderTop:'1px solid #ffffff08' }}>
-                      <span style={{ fontSize:10, color:'#8899bb' }}>{it.stt}</span>
+                      <span style={{ fontSize:10, color:'#8899bb' }}>{it.no ?? it.stt}</span>
                       <span style={{ fontSize:11, color:'#c8d8f0',
                         overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.name}</span>
                       <span style={{ fontSize:9, color:z?.color }}>{z?.label}</span>

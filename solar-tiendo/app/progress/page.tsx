@@ -384,7 +384,7 @@ export default function ProgressPage() {
             <div style={{ minWidth:0 }}>
               <div style={{ fontSize:12, fontWeight:600, color:'#e8eaf0',
                 overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                <span style={{ color:'#8899bb', marginRight:4 }}>{item.stt}.</span>
+                <span style={{ color:'#8899bb', marginRight:4 }}>{item.no ?? item.stt}.</span>
                 {item.name}
               </div>
               <div style={{ display:'flex', gap:5, marginTop:2 }}>
