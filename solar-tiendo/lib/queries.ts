@@ -16,6 +16,27 @@ export async function getItemsWithSteps() {
   return data ?? []
 }
 
+// Hạng mục kèm số ngày đặt hàng RIÊNG của dự án (bảng project_item_settings)
+export async function getItemsForProject(projectId: string) {
+  const [items, { data: settings }] = await Promise.all([
+    getItemsWithSteps(),
+    supabase.from('project_item_settings').select('item_id, order_days').eq('project_id', projectId),
+  ])
+  const od: Record<string, number> = {}
+  for (const s of settings ?? []) od[(s as any).item_id] = (s as any).order_days
+  return (items as any[]).map(it => (it.id in od ? { ...it, order_days: od[it.id] } : it))
+}
+
+// Vật tư phụ (hạng mục con) RIÊNG của dự án
+export async function getSubItems(projectId: string, itemIds: string[]) {
+  if (itemIds.length === 0) return {} as Record<string, any[]>
+  const { data } = await supabase.from('sub_items').select('*')
+    .eq('project_id', projectId).in('item_id', itemIds).order('sort_order')
+  const map: Record<string, any[]> = {}
+  for (const s of data ?? []) (map[s.item_id] ??= []).push(s)
+  return map
+}
+
 export async function getZones() {
   const { data } = await supabase.from('zones').select('*').order('sort_order')
   return data ?? []

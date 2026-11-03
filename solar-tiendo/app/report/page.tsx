@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, zonePct, totalPct, fp, statusOf, getProjectDates } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
-import { getItemsWithSteps, getZones, getProgress, getGanttDates } from '@/lib/queries'
+import { getItemsForProject, getSubItems, getZones, getProgress, getGanttDates } from '@/lib/queries'
 
 const TABS = [
   { path:'/dashboard', icon:'ti-layout-dashboard', label:'Tổng quan' },
@@ -37,7 +37,7 @@ export default function ReportPage() {
     async function load() {
       const [{ data: proj }, z, it, pr, gd] = await Promise.all([
         supabase.from('projects').select('*').eq('id', pid).single(),
-        getZones(), getItemsWithSteps(), getProgress(pid), getGanttDates(pid),
+        getZones(), getItemsForProject(pid), getProgress(pid), getGanttDates(pid),
       ])
       if (!proj) { window.location.href = '/projects'; return }
       setProject(proj); setZones(z); setItems(it as Item[])
@@ -49,15 +49,7 @@ export default function ReportPage() {
       setGanttMap(gm)
       // Load sub_items
       const aItems = (it as any[]).filter((i:any) => i.group_type === 'A').map((i:any) => i.id)
-      if (aItems.length > 0) {
-        const { data: subs } = await supabase.from('sub_items').select('*').in('item_id', aItems).order('sort_order')
-        const subMap: Record<string, any[]> = {}
-        for (const s of subs ?? []) {
-          if (!subMap[s.item_id]) subMap[s.item_id] = []
-          subMap[s.item_id].push(s)
-        }
-        setSubItems(subMap)
-      }
+      setSubItems(await getSubItems(pid, aItems))
       // Tính tuần số từ ngày BD dự án (mục 24/26)
       const { weekNum: wn } = getProjectDates(it as any[], gm)
       setWeekNum(String(wn))

@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, fp, statusOf } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
-import { getItemsWithSteps, getZones, getProgress, getGanttDates, upsertProgress, upsertGantt } from '@/lib/queries'
+import { getItemsForProject, getSubItems, getZones, getProgress, getGanttDates, upsertProgress, upsertGantt } from '@/lib/queries'
 
 const TABS = [
   { path:'/dashboard', icon:'ti-layout-dashboard', label:'Tổng quan' },
@@ -47,7 +47,7 @@ export default function ProgressPage() {
       const { data: { user } } = await supabase.auth.getUser()
       const [{ data: proj }, z, it, pr, gd, { data: memberData }, { data: deps }] = await Promise.all([
         supabase.from('projects').select('*').eq('id', pid).single(),
-        getZones(), getItemsWithSteps(), getProgress(pid), getGanttDates(pid),
+        getZones(), getItemsForProject(pid), getProgress(pid), getGanttDates(pid),
         supabase.from('project_members').select('role').eq('project_id', pid).eq('user_id', user?.id ?? '').single(),
         supabase.from('item_dependencies').select('item_stt, depends_on_stt'),
       ])
@@ -65,15 +65,7 @@ export default function ProgressPage() {
       setDependencies((deps ?? []) as {item_stt:number, depends_on_stt:number}[])
       // Load sub_items cho nhóm A
       const itemIds = (it as any[]).filter((i:any) => i.group_type === 'A').map((i:any) => i.id)
-      if (itemIds.length > 0) {
-        const { data: subs } = await supabase.from('sub_items').select('*').in('item_id', itemIds).order('sort_order')
-        const subMap: Record<string, any[]> = {}
-        for (const s of subs ?? []) {
-          if (!subMap[s.item_id]) subMap[s.item_id] = []
-          subMap[s.item_id].push(s)
-        }
-        setSubItems(subMap)
-      }
+      setSubItems(await getSubItems(pid, itemIds))
       setLoading(false)
     }
     load()
@@ -96,9 +88,10 @@ export default function ProgressPage() {
 
   async function toggleSubItem(itemId: string, subId: string, isDone: boolean) {
     const now = new Date().toISOString()
-    await supabase.from('sub_items').update({
+    const { error } = await supabase.from('sub_items').update({
       is_done: !isDone, done_at: !isDone ? now : null
-    }).eq('id', subId)
+    }).eq('id', subId).eq('project_id', projectId)
+    if (error) { alert('Lỗi lưu: ' + error.message); return }
     setSubItems(prev => ({
       ...prev,
       [itemId]: (prev[itemId] ?? []).map(s =>
@@ -115,20 +108,21 @@ export default function ProgressPage() {
       note:     sub.note     || null,
     }
     if (sub.id) {
-      const { error } = await supabase.from('sub_items').update(payload).eq('id', sub.id)
+      const { error } = await supabase.from('sub_items').update(payload).eq('id', sub.id).eq('project_id', projectId)
       if (error) { alert('Lỗi lưu: ' + error.message); return }
     } else {
-      const { error } = await supabase.from('sub_items').insert({ ...payload, item_id: itemId, sort_order: 99 })
+      const { error } = await supabase.from('sub_items').insert({ ...payload, item_id: itemId, project_id: projectId, sort_order: 99 })
       if (error) { alert('Lỗi thêm: ' + error.message); return }
     }
-    const { data } = await supabase.from('sub_items').select('*').eq('item_id', itemId).order('sort_order')
+    const { data } = await supabase.from('sub_items').select('*')
+      .eq('item_id', itemId).eq('project_id', projectId).order('sort_order')
     setSubItems(prev => ({ ...prev, [itemId]: data ?? [] }))
     setEditSubItem(null)
   }
 
   async function deleteSubItem(itemId: string, subId: string) {
     if (!confirm('Xoá vật tư phụ này?')) return
-    await supabase.from('sub_items').delete().eq('id', subId)
+    await supabase.from('sub_items').delete().eq('id', subId).eq('project_id', projectId)
     setSubItems(prev => ({ ...prev, [itemId]: (prev[itemId] ?? []).filter(s => s.id !== subId) }))
   }
 
@@ -453,7 +447,10 @@ export default function ProgressPage() {
                   }}
                   onBlur={async e => {
                     const days = parseInt(e.target.value) || 7
-                    const { error } = await supabase.from('items').update({ order_days: days }).eq('id', item.id)
+                    // Lưu RIÊNG cho dự án này (không ảnh hưởng dự án khác)
+                    const { error } = await supabase.from('project_item_settings').upsert(
+                      { project_id: projectId, item_id: item.id, order_days: days, updated_at: new Date().toISOString() },
+                      { onConflict: 'project_id,item_id' })
                     if (error) { alert('Lỗi lưu: ' + error.message); return }
                     // Cập nhật state
                     setItems(prev => prev.map(it =>
