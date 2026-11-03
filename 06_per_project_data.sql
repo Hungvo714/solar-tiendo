@@ -72,3 +72,24 @@ drop trigger if exists trigger_seed_project_defaults on public.projects;
 create trigger trigger_seed_project_defaults
   after insert on public.projects
   for each row execute function public.seed_project_defaults();
+
+-- =====================================================================
+-- (migration request_reapproval) Người bị từ chối tự gửi lại yêu cầu duyệt
+-- =====================================================================
+create or replace function public.request_reapproval(p_full_name text, p_phone text, p_company text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Chưa đăng nhập'; end if;
+  if not exists (select 1 from public.profiles where id = auth.uid() and status = 'rejected') then
+    raise exception 'Tài khoản không ở trạng thái bị từ chối';
+  end if;
+  if coalesce(trim(p_full_name), '') = '' then raise exception 'Vui lòng nhập họ tên'; end if;
+  update public.profiles
+     set status = 'pending', full_name = trim(p_full_name),
+         phone = nullif(trim(p_phone), ''), company = nullif(trim(p_company), ''),
+         created_at = now()
+   where id = auth.uid();
+end;
+$$;
+revoke execute on function public.request_reapproval(text, text, text) from public, anon;
+grant  execute on function public.request_reapproval(text, text, text) to authenticated;

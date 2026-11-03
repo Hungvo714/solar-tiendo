@@ -42,14 +42,14 @@ export default function RegisterPage() {
 
     if (err) {
       const msg = err.message.toLowerCase()
-      if (msg.includes('registered') || msg.includes('exists')) setError('Email này đã có tài khoản. Hãy đăng nhập hoặc dùng "Quên mật khẩu".')
+      if (msg.includes('registered') || msg.includes('exists')) setError('Email này đã có tài khoản. Hãy đăng nhập (dùng "Quên mật khẩu" nếu quên) để xem trạng thái hoặc gửi lại yêu cầu duyệt.')
       else if (msg.includes('rate') || msg.includes('seconds')) setError('Bạn thao tác quá nhanh. Vui lòng chờ vài phút rồi thử lại.')
       else setError(err.message)
       return
     }
     // Supabase trả user không có identities khi email đã tồn tại (chế độ chống dò email)
     if (data.user && (data.user.identities?.length ?? 0) === 0) {
-      setError('Email này đã có tài khoản. Hãy đăng nhập hoặc dùng "Quên mật khẩu".')
+      setError('Email này đã có tài khoản. Hãy đăng nhập (dùng "Quên mật khẩu" nếu quên) để xem trạng thái hoặc gửi lại yêu cầu duyệt.')
       return
     }
     if (data.session) window.location.href = '/pending'   // Không bật xác nhận email
