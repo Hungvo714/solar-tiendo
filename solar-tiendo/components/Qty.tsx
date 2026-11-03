@@ -212,18 +212,23 @@ export function QtyStepPanel({ projectId, step, logs, planStart, planEnd, canEnt
 // ---------- Bảng báo cáo khối lượng (Tổng quan / Báo cáo) ----------
 export type QtyRow = { item: any; step: any; s: QtyStats; planStart: string | null }
 
+// Chỉ lấy bước ĐANG THI CÔNG: đã có khối lượng nhập (hoặc hạng mục đã có BD thực tế)
+// và chưa xong (còn khối lượng, hạng mục chưa có HT thực tế). Chưa làm / đã xong → không hiện.
 export function buildQtyRows(items: any[], logs: QtyLog[], ganttMap: Record<string, any>): QtyRow[] {
   const rows: QtyRow[] = []
   for (const it of items) for (const st of it.steps ?? []) {
     if (st.qty_total == null) continue
     const g = ganttMap[it.id] ?? {}
-    rows.push({ item: it, step: st, planStart: g.plan_start ?? null,
-      s: qtyStats(Number(st.qty_total), st.qty_unit, logs.filter(l => l.step_id === st.id), g.plan_end ?? null) })
+    const s = qtyStats(Number(st.qty_total), st.qty_unit, logs.filter(l => l.step_id === st.id), g.plan_end ?? null)
+    const started = s.done > 0 || !!g.actual_start
+    const finished = s.remaining <= 0 || !!g.actual_end
+    if (!started || finished) continue
+    rows.push({ item: it, step: st, planStart: g.plan_start ?? null, s })
   }
   return rows
 }
 
-export function QtyReport({ rows, light = false, title = '📏 Khối lượng thi công' }: { rows: QtyRow[]; light?: boolean; title?: string }) {
+export function QtyReport({ rows, light = false, title = '📏 Khối lượng đang thi công' }: { rows: QtyRow[]; light?: boolean; title?: string }) {
   if (!rows.length) return null
   const c = light
     ? { bg: '#fff', head: '#1F3864', headTx: '#fff', tx: '#1a1a1a', sub: '#555', bd: '#d0d7e2', alt: '#f4f7fb', ok: '#2E7D32', bad: '#C62828', warn: '#B26A00' }
