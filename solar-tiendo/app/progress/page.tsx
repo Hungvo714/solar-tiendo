@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabase'
 import { itemPct, fp, statusOf } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
 import { getItemsForProject, getProjectDependencies, getSubItems, getZones, getProgress, getGanttDates, upsertProgress, upsertGantt } from '@/lib/queries'
+import { addDays, diffDays, fmtVN, earliestPlanStart, requiredArrival, cascadePlan, actualWarnings } from '@/lib/schedule'
+import type { Dep, PlanChange, StartReason } from '@/lib/schedule'
 
 const TABS = [
   { path:'/dashboard', icon:'ti-layout-dashboard', label:'Tổng quan' },
@@ -31,13 +33,15 @@ export default function ProgressPage() {
   const [expanded,     setExpanded]     = useState<Record<string, boolean>>({})
   const [isViewer,     setIsViewer]     = useState(false)
   const [isAdmin,      setIsAdmin]      = useState(false)
-  const [dependencies, setDependencies] = useState<{item_stt:number, depends_on_stt:number}[]>([])
+  const [dependencies, setDependencies] = useState<Dep[]>([])
   const [subItems,     setSubItems]     = useState<Record<string, any[]>>({})
   const [editSubItem,  setEditSubItem]  = useState<{itemId:string, sub?:any}|null>(null)
-  const [conflict,     setConflict]     = useState<{
-    tcItemId: string, tcField: string, tcValue: string,
-    vtItem: any, newVtEnd: string, newVtStart: string
-  }|null>(null)
+  // Hộp thoại xung đột ngày kế hoạch
+  const [dateDlg,      setDateDlg]      = useState<
+    | { kind: 'start'; item: any; value: string; earliest: string; bad: StartReason[];
+        materialFix: { item: any; plan_start: string; plan_end: string }[]; patches: Record<string, Record<string, string|null>> }
+    | { kind: 'cascade'; changes: PlanChange[]; undo: Record<string, Record<string, string|null>> }
+    | null>(null)
 
   useEffect(() => {
     const pid = new URLSearchParams(window.location.search).get('project') || ''
@@ -63,7 +67,7 @@ export default function ProgressPage() {
       const gm: Record<string, GanttDate> = {}
       for (const g of gd) gm[(g as GanttDate).item_id] = g as GanttDate
       setGanttMap(gm)
-      setDependencies((deps ?? []) as {item_stt:number, depends_on_stt:number}[])
+      setDependencies((deps ?? []) as Dep[])
       // Load sub_items cho nhóm A
       const itemIds = (it as any[]).filter((i:any) => i.group_type === 'A').map((i:any) => i.id)
       setSubItems(await getSubItems(pid, itemIds))
@@ -127,38 +131,11 @@ export default function ProgressPage() {
     setSubItems(prev => ({ ...prev, [itemId]: (prev[itemId] ?? []).filter(s => s.id !== subId) }))
   }
 
-  function getMinStartDate(itemStt: number): string | undefined {
-    const deps = dependencies.filter(d => d.item_stt === itemStt)
-    if (deps.length === 0) return undefined
-    let maxDate: Date | null = null
-    for (const dep of deps) {
-      const depItem = items.find(it => it.stt === dep.depends_on_stt)
-      if (!depItem) continue
-      const g = ganttMap[depItem.id]
-      const endDate = g?.actual_end || g?.plan_end
-      if (!endDate) continue
-      const d = new Date(endDate)
-      d.setDate(d.getDate() + 1)
-      if (!maxDate || d > maxDate) maxDate = d
-    }
-    return maxDate ? maxDate.toISOString().split('T')[0] : undefined
-  }
-
-  function getMaxEndDate(itemStt: number): string | undefined {
-    const dependents = dependencies.filter(d => d.depends_on_stt === itemStt)
-    if (dependents.length === 0) return undefined
-    let minDate: Date | null = null
-    for (const dep of dependents) {
-      const depItem = items.find(it => it.stt === dep.item_stt)
-      if (!depItem) continue
-      const g = ganttMap[depItem.id]
-      const startDate = g?.actual_start || g?.plan_start
-      if (!startDate) continue
-      const d = new Date(startDate)
-      if (!minDate || d < minDate) minDate = d
-    }
-    return minDate ? minDate.toISOString().split('T')[0] : undefined
-  }
+  // ===================== LIÊN KẾT NGÀY (quy tắc: lib/schedule.ts) =====================
+  const byId: Record<string, any> = Object.fromEntries(items.map((i: any) => [i.id, i]))
+  const isItemDone = (id: string) => { const it = byId[id]; return !!it && itemPct(it, progressMap) >= 1 }
+  const depLabel = (it: any) => `#${it?.no ?? it?.stt} ${it?.name ?? ''}`
+  const todayStr = () => new Date().toLocaleDateString('en-CA')
 
   async function toggleStep(stepId: string, isDone: boolean, item?: any) {
     const newDone = !isDone
@@ -169,63 +146,31 @@ export default function ProgressPage() {
     }))
     await upsertProgress(projectId, stepId, newDone)
 
-    const today = new Date().toISOString().split('T')[0]
-
-    // Nếu tick hoàn thành bước cuối của hạng mục thi công (B/C)
+    // Tick xong bước cuối của mục thi công (B/C) → tự đánh dấu xong vật tư mà mục đó chờ.
+    // KHÔNG tự ghi ngày có hàng thực tế (người dùng nhập ngày thật).
     if (newDone && item && item.group_type !== 'A') {
       const steps = (item.steps ?? [])
       const allDone = steps.every((s: any) =>
         s.id === stepId ? true : !!progressMap[s.id]?.is_done || !!progressMap[s.id]?.is_na
       )
       if (allDone) {
-        const vtDeps = dependencies.filter(d => d.item_stt === item.stt)
-        for (const dep of vtDeps) {
-          const vtItem = items.find((it: any) => it.stt === dep.depends_on_stt && it.group_type === 'A')
-          if (!vtItem) continue
-          const vtPct = itemPct(vtItem, progressMap)
-          if (vtPct < 1) {
-            const vtSteps = (vtItem as any).steps ?? []
-            for (const vs of vtSteps) {
-              if (!progressMap[vs.id]?.is_done) {
-                setProgressMap(prev => ({
-                  ...prev,
-                  [vs.id]: { ...prev[vs.id], step_id: vs.id, project_id: projectId,
-                    is_done: true, is_na: false } as Progress
-                }))
-                await upsertProgress(projectId, vs.id, true)
-              }
-            }
-            const vtGantt = ganttMap[vtItem.id] as any
-            if (!vtGantt?.actual_end) {
-              await updateGantt(vtItem.id, 'actual_end', today)
-            }
-          }
-        }
-      }
-    }
-
-    // Nếu BỎ tick bước thi công → bỏ tick vật tư nếu HT thực tế = hôm nay (vừa tự động tick)
-    if (!newDone && item && item.group_type !== 'A') {
-      const vtDeps = dependencies.filter(d => d.item_stt === item.stt)
-      for (const dep of vtDeps) {
-        const vtItem = items.find((it: any) => it.stt === dep.depends_on_stt && it.group_type === 'A')
-        if (!vtItem) continue
-        const vtGantt = ganttMap[vtItem.id] as any
-        // Chỉ bỏ tick nếu HT thực tế = hôm nay (tức là vừa được tự động tick)
-        if (vtGantt?.actual_end === today) {
-          const vtSteps = (vtItem as any).steps ?? []
-          for (const vs of vtSteps) {
-            if (progressMap[vs.id]?.is_done) {
+        const missingDate: string[] = []
+        for (const d of dependencies.filter(d => d.item_id === item.id)) {
+          const vt = byId[d.depends_on_item_id]
+          if (!vt || vt.group_type !== 'A' || itemPct(vt, progressMap) >= 1) continue
+          for (const vs of (vt.steps ?? [])) {
+            if (!progressMap[vs.id]?.is_done) {
               setProgressMap(prev => ({
                 ...prev,
-                [vs.id]: { ...prev[vs.id], step_id: vs.id, project_id: projectId,
-                  is_done: false } as Progress
+                [vs.id]: { ...prev[vs.id], step_id: vs.id, project_id: projectId, is_done: true, is_na: false } as Progress
               }))
-              await upsertProgress(projectId, vs.id, false)
+              await upsertProgress(projectId, vs.id, true)
             }
           }
-          // Xóa HT thực tế vật tư
-          await updateGantt(vtItem.id, 'actual_end', '')
+          if (!(ganttMap[vt.id] as any)?.actual_end) missingDate.push(depLabel(vt))
+        }
+        if (missingDate.length) {
+          alert(`✅ Đã tự đánh dấu xong vật tư:\n${missingDate.join('\n')}\n\nNhớ nhập "Có hàng thực tế" (ngày hàng về thật) cho các vật tư này.`)
         }
       }
     }
@@ -249,104 +194,112 @@ export default function ProgressPage() {
     await upsertGantt(projectId, itemId, field, value)
   }
 
-  async function updateGanttSmart(item: any, field: string, value: string) {
-    // Chỉ check conflict khi nhập ngày BD thi công (nhóm B/C)
-    const isTCStart = (field === 'plan_start' || field === 'actual_start')
-      && item.group_type !== 'A'
-
-
-    if (isTCStart && value) {
-      const vtDeps = dependencies.filter(d => d.item_stt === item.stt)
-      for (const dep of vtDeps) {
-        // Xử lý cả mục thi công phụ thuộc (không chỉ vật tư)
-        const depItem = items.find(it => it.stt === dep.depends_on_stt)
-        if (!depItem) continue
-        const vtItem = (depItem as any).group_type === 'A' ? depItem : null
-        if (!vtItem) {
-          // Mục thi công phụ thuộc → cập nhật HT nếu HT hiện tại >= BD mục dưới
-          const isActual = field === 'actual_start'
-          const tcGantt = ganttMap[depItem.id] as any
-          const tcEnd = isActual ? tcGantt?.actual_end : tcGantt?.plan_end
-          const tcEndField = isActual ? 'actual_end' : 'plan_end'
-          if (tcEnd && tcEnd >= value) {
-            // HT mục trên >= BD mục dưới → cập nhật HT mục trên = BD mục dưới - 1
-            const newEnd = new Date(new Date(value).getTime() - 86400000).toISOString().split('T')[0]
-            await updateGantt(depItem.id, tcEndField, newEnd)
-          }
-          continue
-        }
-        const vtGantt = ganttMap[vtItem.id] as any
-        const vtEnd = vtGantt?.actual_end || vtGantt?.plan_end
-        const orderDays = (vtItem as any).order_days ?? 7
-        const newVtEnd = new Date(new Date(value).getTime() - 86400000)
-          .toISOString().split('T')[0]
-        const newVtStart = new Date(new Date(newVtEnd).getTime() - orderDays * 86400000)
-          .toISOString().split('T')[0]
-
-        if (!vtEnd) {
-          // Vật tư chưa có ngày → tự động tính luôn
-          const isActual = field === 'actual_start'
-          await updateGantt(vtItem.id, isActual ? 'actual_end'   : 'plan_end',   newVtEnd)
-          await updateGantt(vtItem.id, isActual ? 'actual_start' : 'plan_start', newVtStart)
-        } else {
-          // Vật tư đã có ngày → chỉ cập nhật nếu ngày mới SỚM HƠN (lấy ngày cần hàng sớm nhất)
-          const isActual = field === 'actual_start'
-          const endField   = isActual ? 'actual_end'   : 'plan_end'
-          const startField = isActual ? 'actual_start' : 'plan_start'
-
-          if (newVtEnd < vtEnd) {
-            // Ngày mới sớm hơn → cập nhật để đảm bảo vật tư đến kịp
-            await updateGantt(vtItem.id, endField,   newVtEnd)
-            await updateGantt(vtItem.id, startField, newVtStart)
-          } else if (value <= vtEnd) {
-            // BD thi công <= HT vật tư hiện tại → conflict thật sự
-            setConflict({
-              tcItemId: item.id, tcField: field, tcValue: value,
-              vtItem, newVtEnd, newVtStart
-            })
-            return
-          }
-          // Ngày mới trễ hơn và không conflict → giữ nguyên ngày VT cũ
-        }
-      }
+  type Patches = Record<string, Record<string, string | null>>
+  const overlay = (patches: Patches, base: any = ganttMap) => {
+    const g: any = { ...base }
+    for (const [id, p] of Object.entries(patches)) g[id] = { ...(g[id] ?? {}), ...p }
+    return g
+  }
+  async function applyDates(patches: Patches) {
+    for (const [id, p] of Object.entries(patches))
+      for (const [f, v] of Object.entries(p)) await updateGantt(id, f, v ?? '')
+  }
+  const snapshot = (patches: Patches): Patches => {
+    const u: Patches = {}
+    for (const [id, p] of Object.entries(patches)) {
+      u[id] = {}
+      for (const f of Object.keys(p)) u[id][f] = (ganttMap[id] as any)?.[f] ?? null
     }
-    // Khi nhập HT thi công → cập nhật HT của các mục phụ thuộc nếu cần sớm hơn
-    const isTCEnd = (field === 'plan_end' || field === 'actual_end')
-      && item.group_type !== 'A'
-
-    if (isTCEnd && value) {
-      const isActual = field === 'actual_end'
-      const endField   = isActual ? 'actual_end'   : 'plan_end'
-      const startField = isActual ? 'actual_start' : 'plan_start'
-      // Tìm các mục phụ thuộc vào item này (mục trên)
-      const depOnMe = dependencies.filter(d => d.depends_on_stt === item.stt)
-      for (const dep of depOnMe) {
-        const depItem = items.find(it => it.stt === dep.item_stt)
-        if (!depItem) continue
-        const depGantt = ganttMap[(depItem as any).id] as any
-        const depStart = depGantt?.[startField]
-        // Nếu mục dưới đã có BD và BD <= HT mới của mục trên → cần cập nhật HT mục trên
-        // Ngược lại không làm gì - chỉ cập nhật constraint (input min) tự động
-      }
-    }
-
-    // Lưu ngày thi công/vật tư
-    updateGantt(item.id, field, value)
+    return u
   }
 
-  async function resolveConflict(choice: 'update_vt' | 'cancel_tc') {
-    if (!conflict) return
-    if (choice === 'update_vt') {
-      // Cập nhật ngày vật tư + lưu ngày thi công
-      const isActual = conflict.tcField === 'actual_start'
-      const endField   = isActual ? 'actual_end'   : 'plan_end'
-      const startField = isActual ? 'actual_start' : 'plan_start'
-      await updateGantt(conflict.vtItem.id, endField,   conflict.newVtEnd)
-      await updateGantt(conflict.vtItem.id, startField, conflict.newVtStart)
-      await updateGantt(conflict.tcItemId,  conflict.tcField, conflict.tcValue)
+  // Sau khi đổi ngày KẾ HOẠCH: kiểm tra các mục phụ thuộc, đề xuất dời dây chuyền
+  function checkCascade(patches: Patches, undo: Patches) {
+    const changes = cascadePlan(Object.keys(patches), dependencies, byId, overlay(patches))
+    if (changes.length) setDateDlg({ kind: 'cascade', changes, undo })
+  }
+
+  // Vật tư: đổi số ngày gia công → ngày có hàng chạy theo ngày đặt hàng
+  async function recalcMaterial(item: any, days: number) {
+    const g = ganttMap[item.id] as any
+    const patches: Patches = {}
+    if (g?.plan_start) patches[item.id] = { plan_end: addDays(g.plan_start, days) }
+    else if (g?.plan_end) patches[item.id] = { plan_start: addDays(g.plan_end, -days) }
+    else return
+    const undo = snapshot(patches)
+    await applyDates(patches)
+    checkCascade(patches, undo)
+  }
+
+  async function updateGanttSmart(item: any, field: string, value: string) {
+    const isA = item.group_type === 'A'
+    const days = item.order_days ?? 7
+    const patches: Patches = { [item.id]: { [field]: value || null } }
+
+    // Vật tư (kế hoạch): ngày đặt hàng + số ngày gia công = ngày có hàng
+    if (isA && value && field === 'plan_start') patches[item.id].plan_end = addDays(value, days)
+    if (isA && value && field === 'plan_end')   patches[item.id].plan_start = addDays(value, -days)
+
+    // Thi công (kế hoạch): nhập ngày bắt đầu
+    if (!isA && field === 'plan_start' && value) {
+      for (const d of dependencies.filter(d => d.item_id === item.id)) {
+        const vt = byId[d.depends_on_item_id]
+        const vg = vt ? ganttMap[vt.id] as any : null
+        // Vật tư chưa có ngày → tính ngược: phải có hàng / đặt hàng muộn nhất ngày ...
+        if (vt?.group_type === 'A' && !vg?.plan_start && !vg?.plan_end) {
+          const arr = requiredArrival(value, d)
+          patches[vt.id] = { plan_end: arr, plan_start: addDays(arr, -(vt.order_days ?? 7)) }
+        }
+      }
+      const { date: earliest, reasons } = earliestPlanStart(item.id, dependencies, byId, overlay(patches))
+      if (earliest && value < earliest) {
+        const bad = reasons.filter(r => value < r.earliest)
+        const allMaterial = bad.every(r => r.pre.group_type === 'A')
+        const materialFix = allMaterial ? bad.map(r => {
+          const arr = requiredArrival(value, r.dep)
+          return { item: r.pre, plan_end: arr, plan_start: addDays(arr, -(r.pre.order_days ?? 7)) }
+        }) : []
+        setDateDlg({ kind: 'start', item, value, earliest, bad, materialFix, patches })
+        return
+      }
     }
-    // choice === 'cancel_tc': không làm gì, bỏ ngày vừa nhập
-    setConflict(null)
+
+    const undo = snapshot(patches)
+    await applyDates(patches)
+    if (field === 'plan_start' || field === 'plan_end') checkCascade(patches, undo)
+  }
+
+  // Chọn cách xử lý trong hộp thoại xung đột ngày
+  async function resolveStart(choice: 'shift' | 'material') {
+    if (!dateDlg || dateDlg.kind !== 'start') return
+    const { item, earliest, materialFix } = dateDlg
+    const patches: Patches = JSON.parse(JSON.stringify(dateDlg.patches))
+    if (choice === 'shift') {
+      const g = ganttMap[item.id] as any
+      patches[item.id].plan_start = earliest
+      if (g?.plan_end && g.plan_end < earliest) {
+        const dur = g.plan_start ? Math.max(0, diffDays(g.plan_start, g.plan_end)) : 0
+        patches[item.id].plan_end = addDays(earliest, dur)
+      }
+    } else {
+      for (const f of materialFix) patches[f.item.id] = { plan_start: f.plan_start, plan_end: f.plan_end }
+    }
+    setDateDlg(null)
+    const undo = snapshot(patches)
+    await applyDates(patches)
+    checkCascade(patches, undo)
+  }
+  async function resolveCascade(choice: 'apply' | 'undo') {
+    if (!dateDlg || dateDlg.kind !== 'cascade') return
+    const dlg = dateDlg
+    setDateDlg(null)
+    if (choice === 'apply') {
+      const p: Patches = {}
+      for (const c of dlg.changes) p[c.itemId] = { plan_start: c.plan_start, ...(c.plan_end ? { plan_end: c.plan_end } : {}) }
+      await applyDates(p)
+    } else {
+      await applyDates(dlg.undo)
+    }
   }
 
   function navigate(path: string) {
@@ -366,6 +319,10 @@ export default function ProgressPage() {
     const st   = statusOf(pct)
     const open = !!expanded[item.id]
     const steps = (item.steps ?? []).sort((a: any, b: any) => a.step_index - b.step_index)
+    const isA  = item.group_type === 'A'
+    const myDeps = dependencies.filter(d => d.item_id === item.id && byId[d.depends_on_item_id])
+    const planEarliest = isA ? null : earliestPlanStart(item.id, dependencies, byId, ganttMap as any).date
+    const warns = actualWarnings(item, dependencies, byId, ganttMap as any, isItemDone)
     return (
       <div key={item.id} style={{ background:'#0d1b3e',
         border: `1px solid ${open ? z?.color ?? '#ffffff15' : '#ffffff10'}`,
@@ -386,6 +343,7 @@ export default function ProgressPage() {
                 overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                 <span style={{ color:'#8899bb', marginRight:4 }}>{item.no ?? item.stt}.</span>
                 {item.name}
+                {warns.length > 0 && <span title={warns.join('\n')} style={{ marginLeft:6 }}>🔴</span>}
               </div>
               <div style={{ display:'flex', gap:5, marginTop:2 }}>
                 <span style={{ fontSize:9, padding:'1px 6px', borderRadius:8,
@@ -432,98 +390,107 @@ export default function ProgressPage() {
         {/* Body */}
         {open && (
           <div style={{ borderTop:`1px solid ${z?.color ?? '#ffffff15'}`, padding:12 }}>
-            {/* Order days - chỉ nhóm A */}
+            {/* Vật tư (nhóm A): số ngày gia công / giao hàng */}
             {(item as any).group_type === 'A' && !isViewer && (
-              <div style={{ display:'flex', alignItems:'center', gap:8,
+              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap',
                 marginBottom:8, padding:'6px 10px', borderRadius:7,
                 background:'#fbbf2410', border:'1px solid #fbbf2430' }}>
-                <span style={{ fontSize:10, color:'#fbbf24' }}>⏱️ Thời gian đặt hàng:</span>
-                <input type="number" min="1" max="90"
+                <span style={{ fontSize:10, color:'#fbbf24' }}>⏱️ Gia công / giao hàng:</span>
+                <input type="number" min="0" max="180"
                   value={(item as any).order_days ?? 7}
                   onChange={e => {
-                    const days = parseInt(e.target.value) || 1
+                    const days = Math.max(0, parseInt(e.target.value) || 0)
                     setItems(prev => prev.map(it =>
                       it.id === item.id ? { ...it, order_days: days } as any : it
                     ))
                   }}
                   onBlur={async e => {
-                    const days = parseInt(e.target.value) || 7
+                    const days = Math.max(0, parseInt(e.target.value) || 0)
                     // Lưu RIÊNG cho dự án này (không ảnh hưởng dự án khác)
                     const { error } = await supabase.from('project_item_settings').upsert(
                       { project_id: projectId, item_id: item.id, order_days: days, updated_at: new Date().toISOString() },
                       { onConflict: 'project_id,item_id' })
                     if (error) { alert('Lỗi lưu: ' + error.message); return }
-                    // Cập nhật state
                     setItems(prev => prev.map(it =>
                       it.id === item.id ? { ...it, order_days: days } as any : it
                     ))
-                    // Tự động tính lại BD KH nếu đã có HT KH
-                    const g = ganttMap[item.id] as any
-                    const htKH = g?.plan_end
-                    if (htKH) {
-                      const newBD = new Date(new Date(htKH).getTime() - days * 86400000)
-                        .toISOString().split('T')[0]
-                      await updateGantt(item.id, 'plan_start', newBD)
-                    }
+                    // Ngày có hàng = ngày đặt hàng + số ngày (kế hoạch)
+                    await recalcMaterial({ ...item, order_days: days }, days)
                   }}
-                  style={{ width:50, background:'#0a0f1e', border:'1px solid #fbbf2440',
+                  style={{ width:54, background:'#0a0f1e', border:'1px solid #fbbf2440',
                     borderRadius:5, padding:'3px 6px', color:'#fbbf24',
                     fontFamily:'monospace', fontSize:12, outline:'none', textAlign:'center' }}/>
                 <span style={{ fontSize:10, color:'#8899bb' }}>ngày</span>
+                {(ganttMap[item.id] as any)?.plan_start && (
+                  <span style={{ fontSize:10, color:'#8899bb' }}>
+                    · đặt {fmtVN((ganttMap[item.id] as any).plan_start)} → có hàng <b style={{ color:'#fbbf24' }}>{fmtVN((ganttMap[item.id] as any).plan_end)}</b>
+                  </span>
+                )}
               </div>
             )}
-            {/* Gantt dates */}
+
+            {/* Điều kiện liên quan + cảnh báo thực tế */}
+            {myDeps.length > 0 && (
+              <div style={{ marginBottom:8, padding:'6px 10px', borderRadius:7, background:'#4472C412',
+                border:'1px solid #4472C433', fontSize:10, color:'#8899bb', lineHeight:1.7 }}>
+                <span style={{ color:'#93b4f0' }}>🔗 Chờ:</span>{' '}
+                {myDeps.map((d, i) => {
+                  const pre = byId[d.depends_on_item_id]
+                  const pe = (ganttMap[pre.id] as any)?.plan_end
+                  return (
+                    <span key={i} style={{ marginRight:8, whiteSpace:'nowrap' }}>
+                      <b style={{ color:'#c0d0ef' }}>#{pre.no ?? pre.stt}</b> {pre.name}
+                      {' '}({pre.group_type === 'A' ? 'có hàng' : 'xong'} {fmtVN(pe)}{d.lag_days ? `, +${d.lag_days} ngày chờ` : ''})
+                    </span>
+                  )
+                })}
+                {planEarliest && <div>→ Bắt đầu kế hoạch sớm nhất: <b style={{ color:'#60a5fa' }}>{fmtVN(planEarliest)}</b></div>}
+              </div>
+            )}
+            {warns.map((w, i) => (
+              <div key={i} style={{ marginBottom:6, padding:'5px 10px', borderRadius:7, background:'#FF444418',
+                border:'1px solid #FF444455', fontSize:10, color:'#FF9999' }}>🔴 {w}</div>
+            ))}
+
+            {/* Ngày (kế hoạch / thực tế) */}
             <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:10 }}>
-              {[['plan_start','BD Kế hoạch'],['plan_end','HT Kế hoạch'],
-                ['actual_start','BD Thực tế'],['actual_end','HT Thực tế']].map(([field, label]) => {
-                const isStart = field==='plan_start' || field==='actual_start'
-                const isEnd   = field==='plan_end'   || field==='actual_end'
-                const min = isStart ? getMinStartDate(item.stt) : undefined
-                const max = isEnd   ? getMaxEndDate(item.stt) : undefined
+              {(isA
+                ? [['plan_start','Đặt hàng (KH)'],['plan_end','Có hàng (KH)'],['actual_start','Đặt hàng thực tế'],['actual_end','Có hàng thực tế']]
+                : [['plan_start','BD Kế hoạch'],['plan_end','HT Kế hoạch'],['actual_start','BD Thực tế'],['actual_end','HT Thực tế']]
+              ).map(([field, label]) => {
                 const val = (ganttMap[item.id] as any)?.[field] ?? ''
+                const g = ganttMap[item.id] as any
                 return (
                   <div key={field} style={{ display:'flex', flexDirection:'column', gap:3, flex:1, minWidth:130 }}>
-                    <label style={{ fontSize:10, color:'#8899bb' }}>{label}</label>
+                    <label style={{ fontSize:10, color:'#8899bb' }}>
+                      {label}
+                      {field === 'plan_start' && !isA && planEarliest && !val && (
+                        <span style={{ color:'#60a5fa' }}> · sớm nhất {fmtVN(planEarliest)}</span>
+                      )}
+                    </label>
                     <input type="date" value={val}
                       min={isViewer ? undefined : (
-                        field === 'plan_start' ? min :
-                        field === 'actual_start' ? min :
-                        field === 'plan_end' ? ((ganttMap[item.id] as any)?.plan_start || undefined) :
-                        field === 'actual_end' ? ((ganttMap[item.id] as any)?.actual_start || undefined) :
-                        undefined
+                        field === 'plan_end' ? (g?.plan_start || undefined) :
+                        field === 'actual_end' ? (g?.actual_start || undefined) : undefined
                       )}
-                      max={isViewer ? undefined : (isEnd ? (max || undefined) : undefined)}
                       readOnly={isViewer}
                       onChange={e => {
                         if (isViewer) return
                         const v = e.target.value
-                        const g = ganttMap[item.id] as any
-                        // Kiểm tra ngày BD không được sau ngày HT
-                        if (field === 'plan_start' && g?.plan_end && v > g.plan_end) {
-                          alert('⚠️ Ngày BD kế hoạch không được sau ngày HT kế hoạch!')
-                          return
+                        // Thứ tự BD ≤ HT trong cùng một mục (vật tư kế hoạch tự tính nên bỏ qua)
+                        if (!isA || field.startsWith('actual')) {
+                          if (field === 'plan_start' && g?.plan_end && v > g.plan_end) {
+                            alert('⚠️ Ngày BD kế hoạch không được sau ngày HT kế hoạch!'); return
+                          }
+                          if (field === 'plan_end' && g?.plan_start && v && v < g.plan_start) {
+                            alert('⚠️ Ngày HT kế hoạch không được trước ngày BD kế hoạch!'); return
+                          }
                         }
                         if (field === 'actual_start' && g?.actual_end && v > g.actual_end) {
-                          alert('⚠️ Ngày BD thực tế không được sau ngày HT thực tế!')
-                          return
+                          alert(isA ? '⚠️ Ngày đặt hàng thực tế không được sau ngày có hàng thực tế!' : '⚠️ Ngày BD thực tế không được sau ngày HT thực tế!'); return
                         }
-                        // Kiểm tra ngày HT không được trước ngày BD
-                        if (field === 'plan_end' && g?.plan_start && v < g.plan_start) {
-                          alert('⚠️ Ngày HT kế hoạch không được trước ngày BD kế hoạch!')
-                          return
-                        }
-                        if (field === 'actual_end' && g?.actual_start && v < g.actual_start) {
-                          alert('⚠️ Ngày HT thực tế không được trước ngày BD thực tế!')
-                          return
-                        }
-                        // Kiểm tra điều kiện hạng mục
-                        if (isStart && min && v && v < min) {
-                          alert('⚠️ Ngày bắt đầu phải từ ' + new Date(min).toLocaleDateString('vi-VN') + ' trở đi')
-                          return
-                        }
-                        if (isEnd && max && v && v > max) {
-                          alert('⚠️ Ngày kết thúc không được sau ' + new Date(max).toLocaleDateString('vi-VN'))
-                          return
+                        if (field === 'actual_end' && g?.actual_start && v && v < g.actual_start) {
+                          alert(isA ? '⚠️ Ngày có hàng thực tế không được trước ngày đặt hàng thực tế!' : '⚠️ Ngày HT thực tế không được trước ngày BD thực tế!'); return
                         }
                         updateGanttSmart(item, field, v)
                       }}
@@ -654,46 +621,82 @@ export default function ProgressPage() {
     )
   }
 
-  // Modal thêm/sửa vật tư phụ
+  // Hộp thoại xung đột ngày kế hoạch
   function ConflictModal() {
-    if (!conflict) return null
-    const vtName = conflict.vtItem?.name ?? ''
-    const fmtD = (d: string) => new Date(d).toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})
-    return (
-      <div style={{ position:'fixed', inset:0, background:'#000000cc',
-        display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}>
-        <div style={{ background:'#0d1b3e', border:'1px solid #fbbf24',
-          borderRadius:14, padding:24, width:360, maxWidth:'90vw' }}>
-          <div style={{ fontSize:14, fontWeight:700, color:'#fbbf24', marginBottom:12 }}>
-            ⚠️ Conflict ngày
-          </div>
-          <div style={{ fontSize:11, color:'#c8d8f0', marginBottom:16, lineHeight:1.6 }}>
-            Ngày thi công bắt đầu sớm hơn ngày hoàn thành vật tư
-            <strong style={{ color:'#fbbf24' }}> "{vtName}"</strong>.
-            <br/>Bạn muốn làm gì?
-          </div>
-          <div style={{ background:'#ffffff08', borderRadius:8, padding:10, marginBottom:16, fontSize:10, color:'#8899bb' }}>
-            Nếu cập nhật vật tư:<br/>
-            • BD đặt hàng: <span style={{ color:'#60a5fa' }}>{fmtD(conflict.newVtStart)}</span><br/>
-            • HT đặt hàng: <span style={{ color:'#60a5fa' }}>{fmtD(conflict.newVtEnd)}</span>
-          </div>
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            <button onClick={() => resolveConflict('update_vt')}
-              style={{ padding:10, background:'#276221', border:'1px solid #4ade80',
-                borderRadius:9, color:'#4ade80', fontFamily:'inherit',
-                fontSize:12, fontWeight:600, cursor:'pointer' }}>
-              ✅ Cập nhật ngày vật tư & lưu ngày thi công
-            </button>
-            <button onClick={() => resolveConflict('cancel_tc')}
-              style={{ padding:10, background:'transparent', border:'1px solid #ffffff20',
-                borderRadius:9, color:'#8899bb', fontFamily:'inherit',
-                fontSize:12, cursor:'pointer' }}>
-              ↩️ Giữ ngày vật tư, bỏ ngày thi công vừa nhập
-            </button>
-          </div>
-        </div>
+    if (!dateDlg) return null
+    const box = (children: React.ReactNode) => (
+      <div style={{ position:'fixed', inset:0, background:'#000000cc', display:'flex',
+        alignItems:'center', justifyContent:'center', zIndex:1000, padding:16 }}>
+        <div style={{ background:'#0d1b3e', border:'1px solid #fbbf24', borderRadius:14, padding:20,
+          width:440, maxWidth:'100%', maxHeight:'90vh', overflowY:'auto' }}>{children}</div>
       </div>
     )
+    const bigBtn = (bg: string, bd: string, c: string): React.CSSProperties => ({
+      padding:10, background:bg, border:`1px solid ${bd}`, borderRadius:9, color:c, fontFamily:'inherit',
+      fontSize:12, fontWeight:600, cursor:'pointer', textAlign:'left', lineHeight:1.5 })
+
+    if (dateDlg.kind === 'start') {
+      const { item, value, earliest, bad, materialFix } = dateDlg
+      const today = todayStr()
+      return box(<>
+        <div style={{ fontSize:14, fontWeight:700, color:'#fbbf24', marginBottom:10 }}>⚠️ Chưa đủ điều kiện để bắt đầu</div>
+        <div style={{ fontSize:11, color:'#c8d8f0', lineHeight:1.6, marginBottom:12 }}>
+          <b>{depLabel(item)}</b> dự định bắt đầu <b>{fmtVN(value)}</b>, nhưng:
+          <ul style={{ margin:'6px 0 0 16px', padding:0 }}>
+            {bad.map((r, i) => (
+              <li key={i}>
+                {depLabel(r.pre)} {r.pre.group_type === 'A' ? 'có hàng' : 'hoàn thành'} <b>{fmtVN(r.preDate)}</b>
+                {r.dep.lag_days ? ` (+${r.dep.lag_days} ngày chờ)` : ''} → sớm nhất <b>{fmtVN(r.earliest)}</b>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          <button onClick={() => resolveStart('shift')} style={bigBtn('#1a2d5a', '#4472C4', '#93b4f0')}>
+            📅 Dời ngày bắt đầu sang <b>{fmtVN(earliest)}</b>
+          </button>
+          {materialFix.length > 0 && (
+            <button onClick={() => resolveStart('material')} style={bigBtn('#276221', '#4ade80', '#4ade80')}>
+              📦 Giữ ngày {fmtVN(value)}, đặt hàng sớm hơn:
+              {materialFix.map((f, i) => (
+                <div key={i} style={{ fontWeight:400, fontSize:11, color:'#c8f0d0' }}>
+                  • {depLabel(f.item)}: đặt <b>{fmtVN(f.plan_start)}</b> → có hàng {fmtVN(f.plan_end)}
+                  {f.plan_start < today && <span style={{ color:'#FF9999' }}> (ngày đặt đã qua!)</span>}
+                </div>
+              ))}
+            </button>
+          )}
+          <button onClick={() => setDateDlg(null)} style={bigBtn('transparent', '#ffffff20', '#8899bb')}>
+            ↩️ Huỷ, không lưu ngày vừa nhập
+          </button>
+        </div>
+      </>)
+    }
+
+    // kind === 'cascade'
+    const { changes } = dateDlg
+    return box(<>
+      <div style={{ fontSize:14, fontWeight:700, color:'#fbbf24', marginBottom:10 }}>⚠️ Ảnh hưởng tới các mục phía sau</div>
+      <div style={{ fontSize:11, color:'#c8d8f0', lineHeight:1.6, marginBottom:10 }}>
+        Thay đổi vừa nhập làm {changes.length} mục đang chờ không còn đủ điều kiện. Đề xuất dời (giữ nguyên số ngày thi công):
+      </div>
+      <div style={{ background:'#ffffff08', borderRadius:8, padding:10, marginBottom:14, fontSize:11, color:'#c0d0ef', lineHeight:1.7 }}>
+        {changes.map(c => (
+          <div key={c.itemId}>
+            {depLabel(byId[c.itemId])}: BD {fmtVN(c.oldStart)} → <b style={{ color:'#fbbf24' }}>{fmtVN(c.plan_start)}</b>
+            <span style={{ color:'#8899bb' }}> (+{diffDays(c.oldStart, c.plan_start)} ngày)</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        <button onClick={() => resolveCascade('apply')} style={bigBtn('#276221', '#4ade80', '#4ade80')}>
+          ✅ Dời các mục trên theo đề xuất
+        </button>
+        <button onClick={() => resolveCascade('undo')} style={bigBtn('transparent', '#ffffff20', '#8899bb')}>
+          ↩️ Hoàn tác thay đổi vừa nhập
+        </button>
+      </div>
+    </>)
   }
 
   function SubItemModal() {

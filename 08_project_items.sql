@@ -216,3 +216,10 @@ grant execute on function public.get_shared_project(text) to anon, authenticated
 --   (xem nội dung đầy đủ trong lịch sử migration của Supabase)
 -- =====================================================================
 alter table public.items alter column sort_order type numeric using sort_order::numeric;
+
+-- =====================================================================
+-- (migration dependency_lag_days) Số ngày chờ cho từng liên kết
+-- =====================================================================
+alter table public.project_item_dependencies add column if not exists lag_days integer not null default 0
+  check (lag_days between 0 and 365);
+-- set_item_dependencies(pid, p_item, p_depends uuid[], p_lags integer[] default null)
