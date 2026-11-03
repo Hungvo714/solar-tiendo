@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, fp, statusOf } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
-import { getItemsForProject, getSubItems, getZones, getProgress, getGanttDates, upsertProgress, upsertGantt } from '@/lib/queries'
+import { getItemsForProject, getProjectDependencies, getSubItems, getZones, getProgress, getGanttDates, upsertProgress, upsertGantt } from '@/lib/queries'
 
 const TABS = [
   { path:'/dashboard', icon:'ti-layout-dashboard', label:'Tổng quan' },
@@ -45,12 +45,13 @@ export default function ProgressPage() {
     setProjectId(pid)
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
-      const [{ data: proj }, z, it, pr, gd, { data: memberData }, { data: deps }] = await Promise.all([
+      const [{ data: proj }, z, it, pr, gd, { data: memberData }] = await Promise.all([
         supabase.from('projects').select('*').eq('id', pid).single(),
         getZones(), getItemsForProject(pid), getProgress(pid), getGanttDates(pid),
         supabase.from('project_members').select('role').eq('project_id', pid).eq('user_id', user?.id ?? '').single(),
-        supabase.from('item_dependencies').select('item_stt, depends_on_stt'),
       ])
+      // Điều kiện liên quan RIÊNG của dự án (chỉ giữa các mục đang hiển thị)
+      const deps = await getProjectDependencies(pid, it as any[])
       if (!proj) { window.location.href = '/projects'; return }
       const role = (memberData as any)?.role ?? 'viewer'
       setIsViewer(role === 'viewer')

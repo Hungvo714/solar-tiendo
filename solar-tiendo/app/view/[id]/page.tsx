@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, zonePct, totalPct, fp, statusOf, elapsedDays, getProjectDates } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
-import { getItemsWithSteps, getZones } from '@/lib/queries'
+import { getZones } from '@/lib/queries'
 
 export default function PublicViewPage() {
   const [project,     setProject]     = useState<Project | null>(null)
@@ -20,10 +20,12 @@ export default function PublicViewPage() {
     if (!token || token === 'view') { setNotFound(true); setLoading(false); return }
     async function load() {
       // Chỉ lấy đúng 1 dự án theo mã chia sẻ (hàm get_shared_project phía máy chủ)
-      const [{ data: shared }, z, it] = await Promise.all([
+      const [{ data: shared }, z] = await Promise.all([
         supabase.rpc('get_shared_project', { p_token: token }),
-        getZones(), getItemsWithSteps(),
+        getZones(),
       ])
+      // Hạng mục đã áp cấu hình của dự án (ẩn mục không dùng, có mục thêm riêng)
+      const it = ((shared as any)?.items ?? []) as any[]
       const proj = (shared as any)?.project
       if (!proj) { setNotFound(true); setLoading(false); return }
       const pr = ((shared as any).progress ?? []) as any[]

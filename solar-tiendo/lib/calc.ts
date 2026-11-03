@@ -62,8 +62,18 @@ export function getProjectDates(items: any[], ganttMap: Record<string, any>) {
   const startG = startItem ? ganttMap[startItem.id] : null
   const endG   = endItem   ? ganttMap[endItem.id]   : null
 
-  const startDate = startG?.actual_start || startG?.plan_start || null
-  const endDate   = endG?.actual_end     || endG?.plan_end     || null
+  // Dự phòng khi các mục mốc (24/26/55) bị ẩn khỏi dự án hoặc chưa có ngày:
+  // lấy ngày BD sớm nhất / ngày HT muộn nhất trong các hạng mục đang hiển thị
+  const pick = (k1: string, k2: string, fn: (a: string, b: string) => boolean) => {
+    let v: string | null = null
+    for (const it of items) {
+      const g = ganttMap[it.id]; const d = g?.[k1] || g?.[k2]
+      if (d && (!v || fn(d, v))) v = d
+    }
+    return v
+  }
+  const startDate = startG?.actual_start || startG?.plan_start || pick('actual_start', 'plan_start', (a, b) => a < b)
+  const endDate   = endG?.actual_end     || endG?.plan_end     || pick('actual_end', 'plan_end', (a, b) => a > b)
 
   const now = new Date(); now.setHours(0,0,0,0)
 

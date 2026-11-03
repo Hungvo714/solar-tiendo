@@ -7,6 +7,8 @@ export async function getProject() {
   return data
 }
 
+// Toàn bộ hạng mục người dùng đọc được (mẫu + mục riêng của các dự án mình tham gia).
+// KHÔNG dùng trực tiếp cho 1 dự án — dùng getItemsForProject.
 export async function getItemsWithSteps() {
   const { data, error } = await supabase
     .from('items')
@@ -16,15 +18,47 @@ export async function getItemsWithSteps() {
   return data ?? []
 }
 
-// Hạng mục kèm số ngày đặt hàng RIÊNG của dự án (bảng project_item_settings)
-export async function getItemsForProject(projectId: string) {
+const sortItems = (a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.stt - b.stt
+const sortSteps = (it: any) => ({
+  ...it,
+  steps: [...(it.steps ?? [])].sort((a: any, b: any) =>
+    (a.sort_order ?? 0) - (b.sort_order ?? 0) || (a.step_index ?? 0) - (b.step_index ?? 0)),
+})
+
+// Hạng mục của 1 dự án: mục mẫu + mục thêm riêng, áp số ngày đặt hàng riêng,
+// BỎ các mục bị ẩn (trừ khi includeHidden — dùng cho trang cấu hình, có cờ hidden)
+export async function getItemsForProject(projectId: string, opts: { includeHidden?: boolean } = {}) {
   const [items, { data: settings }] = await Promise.all([
     getItemsWithSteps(),
-    supabase.from('project_item_settings').select('item_id, order_days').eq('project_id', projectId),
+    supabase.from('project_item_settings').select('item_id, order_days, hidden').eq('project_id', projectId),
   ])
-  const od: Record<string, number> = {}
-  for (const s of settings ?? []) od[(s as any).item_id] = (s as any).order_days
-  return (items as any[]).map(it => (it.id in od ? { ...it, order_days: od[it.id] } : it))
+  const st: Record<string, { order_days: number; hidden: boolean }> = {}
+  for (const s of settings ?? []) st[(s as any).item_id] = s as any
+  return (items as any[])
+    .filter(it => it.project_id == null || it.project_id === projectId)
+    .map(it => ({
+      ...sortSteps(it),
+      order_days: st[it.id]?.order_days ?? it.order_days,
+      hidden: !!st[it.id]?.hidden,
+    }))
+    .filter(it => opts.includeHidden || !it.hidden)
+    .sort(sortItems)
+}
+
+// Điều kiện liên quan của dự án.
+// Trả về dạng cũ {item_stt, depends_on_stt} để các màn hình hiện có dùng lại;
+// chỉ giữ điều kiện giữa các mục đang hiển thị.
+export async function getProjectDependencies(projectId: string, items: any[]) {
+  const { data } = await supabase.from('project_item_dependencies')
+    .select('item_id, depends_on_item_id').eq('project_id', projectId)
+  const sttOf: Record<string, number> = {}
+  for (const it of items) sttOf[it.id] = it.stt
+  return (data ?? [])
+    .filter((d: any) => d.item_id in sttOf && d.depends_on_item_id in sttOf)
+    .map((d: any) => ({
+      item_stt: sttOf[d.item_id], depends_on_stt: sttOf[d.depends_on_item_id],
+      item_id: d.item_id as string, depends_on_item_id: d.depends_on_item_id as string,
+    }))
 }
 
 // Vật tư phụ (hạng mục con) RIÊNG của dự án

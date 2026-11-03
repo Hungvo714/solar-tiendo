@@ -493,6 +493,13 @@ export default function ProjectsPage() {
                         ✏️ Sửa
                       </button>
                     )}
+                    {isSuper && (
+                      <button onClick={() => window.location.href = `/items?project=${proj.id}`}
+                        title="Thêm / ẩn hạng mục, sửa điều kiện liên quan"
+                        style={S.btn('#F5A62315','#F5A623','#F5A62366')}>
+                        ⚙️ Hạng mục
+                      </button>
+                    )}
                     {isAdmin && (
                       <button onClick={() => deleteProject(proj.id, proj.name)}
                         disabled={deleting===proj.id}

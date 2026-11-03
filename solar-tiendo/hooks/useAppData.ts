@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase, Item, Progress, GanttDate, Zone, Project } from '@/lib/supabase'
 import {
-  getItemsWithSteps, getZones, getProgress, getGanttDates,
+  getItemsForProject, getZones, getProgress, getGanttDates,
   upsertProgress, upsertGantt, subscribeProgress, subscribeGantt
 } from '@/lib/queries'
 
@@ -44,7 +44,7 @@ export function useAppData() {
 
         const [z, it, pr, gd] = await Promise.all([
           getZones(),
-          getItemsWithSteps(),
+          getItemsForProject(proj.id),
           getProgress(proj.id),
           getGanttDates(proj.id),
         ])

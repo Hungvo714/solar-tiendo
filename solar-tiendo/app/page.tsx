@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, zonePct, totalPct, fp, statusOf } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
-import { getItemsWithSteps, getZones, getProgress, getGanttDates } from '@/lib/queries'
+import { getItemsForProject, getZones, getProgress, getGanttDates } from '@/lib/queries'
 
 const TABS = [
   { path:'/dashboard', icon:'ti-layout-dashboard', label:'Tổng quan' },
@@ -38,7 +38,7 @@ export default function ReportPage() {
     async function load() {
       const [{ data: proj }, z, it, pr, gd] = await Promise.all([
         supabase.from('projects').select('*').eq('id', pid).single(),
-        getZones(), getItemsWithSteps(), getProgress(pid), getGanttDates(pid),
+        getZones(), getItemsForProject(pid), getProgress(pid), getGanttDates(pid),
       ])
       if (!proj) { window.location.href = '/projects'; return }
       setProject(proj); setZones(z); setItems(it as Item[])
