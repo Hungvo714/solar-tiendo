@@ -135,3 +135,9 @@ begin
 end;
 $$;
 grant execute on function public.get_shared_project(text) to anon, authenticated;
+
+-- =====================================================================
+-- (migration fix_template_item41_steps) Sửa lỗi dữ liệu mẫu mục 41 "Thi công lắp đặt tấm pin"
+--   trước: 10 dòng = 5 bước bị nhân đôi, lẫn bước của hệ dây cứu sinh; chưa dự án nào tick
+--   sau: 7 bước lắp tấm pin, tổng trọng số 100
+-- =====================================================================
