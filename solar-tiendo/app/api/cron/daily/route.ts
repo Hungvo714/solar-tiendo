@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { gzipSync } from 'zlib'
+import { sendEmail } from '@/lib/email'
 
 // Tác vụ tự động chạy mỗi ngày (Vercel Cron, cấu hình trong vercel.json):
 //  1) Giữ database hoạt động (tránh Supabase gói Free tự tạm dừng)
@@ -28,21 +29,6 @@ const BACKUP_TABLES = [
 
 const vnDate = (d: Date) => d.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short' })
 const vnDay  = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })   // YYYY-MM-DD
-
-async function sendEmail(subject: string, html: string, attachments?: { filename: string; content: string }[]) {
-  const key = process.env.RESEND_API_KEY
-  if (!key) throw new Error('Chưa cấu hình RESEND_API_KEY')
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: process.env.ALERT_FROM || 'Solar Tiến Độ <onboarding@resend.dev>',
-      to: [process.env.ALERT_EMAIL || 'vn.hung714@gmail.com'],
-      subject, html, attachments,
-    }),
-  })
-  if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`)
-}
 
 export async function GET(req: Request) {
   // Chỉ Vercel Cron (hoặc người có CRON_SECRET) được gọi
