@@ -387,6 +387,8 @@ export default function ProjectsPage() {
               )}
             </button>
           )}
+          <button onClick={() => window.location.href = '/account'} title="Thông tin cá nhân, đổi mật khẩu"
+            style={S.btn('transparent','#c0d0ef','#ffffff30')}>👤 Tài khoản</button>
           <button onClick={() => supabase.auth.signOut().then(() => window.location.href='/login')}
             style={S.btn('transparent','#8899bb','#ffffff20')}>Đăng xuất</button>
         </div>
