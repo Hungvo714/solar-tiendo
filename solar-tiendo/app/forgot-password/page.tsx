@@ -1,4 +1,5 @@
 'use client'
+import BrandLogo from '@/components/BrandLogo'
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
@@ -39,9 +40,7 @@ export default function ForgotPasswordPage() {
       minHeight:'100vh', background:'#0a0f1e', padding:16 }}>
       <div style={{ width:'100%', maxWidth:380 }}>
         <div style={{ textAlign:'center', marginBottom:32 }}>
-          <div style={{ display:'inline-flex', alignItems:'center', justifyContent:'center',
-            width:56, height:56, background:'#F5A623', borderRadius:14,
-            fontSize:14, fontWeight:700, color:'#0d1b3e', marginBottom:12 }}>HTE</div>
+          <div style={{ display:'inline-flex', marginBottom:12 }}><BrandLogo size={56} /></div>
           <div style={{ fontSize:18, fontWeight:700, color:'#e8eaf0' }}>Quên mật khẩu</div>
           <div style={{ fontSize:12, color:'#8899bb', marginTop:4 }}>
             Nhập email đăng nhập để nhận link đặt lại mật khẩu

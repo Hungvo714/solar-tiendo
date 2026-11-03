@@ -1,4 +1,5 @@
 'use client'
+import BrandLogo from '@/components/BrandLogo'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, zonePct, totalPct, fp, statusOf, elapsedDays, getProjectDates } from '@/lib/calc'
@@ -108,9 +109,7 @@ export default function PublicViewPage() {
         justifyContent:'space-between', borderBottom:'1px solid #ffffff12',
         position:'sticky', top:0, zIndex:50 }}>
         <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0, flex:1 }}>
-          <div style={{ background:'#8B008B', color:'#fff', fontWeight:700,
-            fontSize:10, width:38, height:38, borderRadius:8, flexShrink:0,
-            display:'flex', alignItems:'center', justifyContent:'center' }}>HTE</div>
+          <BrandLogo size={38} />
           <div style={{ minWidth:0 }}>
             <div style={{ fontSize:13, fontWeight:700, color:'#fff',
               overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{project?.name}</div>

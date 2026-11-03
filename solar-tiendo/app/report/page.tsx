@@ -1,4 +1,5 @@
 'use client'
+import BrandLogo from '@/components/BrandLogo'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, zonePct, totalPct, fp, statusOf, getProjectDates } from '@/lib/calc'
@@ -250,11 +251,7 @@ export default function ReportPage() {
         justifyContent:'space-between', borderBottom:'1px solid #ffffff12',
         position:'sticky', top:0, zIndex:50 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
-          <div style={{ background:'#8B008B', color:'#fff', fontWeight:700,
-            fontSize:11, width:36, height:36, borderRadius:8, flexShrink:0,
-            display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer',
-            letterSpacing:1, fontStyle:'italic' }}
-            onClick={() => window.location.href='/projects'}>HTE</div>
+          <BrandLogo size={36} onClick={() => window.location.href='/projects'} />
           <div style={{ minWidth:0 }}>
             <div style={{ fontSize:13, fontWeight:700, color:'#fff',
               overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{project?.name}</div>
@@ -289,9 +286,7 @@ export default function ReportPage() {
               borderRadius: printMode ? 0 : 10,
               display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                <div style={{ background:'#F5A623', color:'#0d1b3e', fontWeight:700,
-                  fontSize:14, width:48, height:48, borderRadius:10,
-                  display:'flex', alignItems:'center', justifyContent:'center' }}>HTE</div>
+                <BrandLogo size={48} />
                 <div>
                   <div style={{ fontSize:16, fontWeight:700, color:'#fff' }}>
                     BÁO CÁO TIẾN ĐỘ THI CÔNG TUẦN {weekNum}

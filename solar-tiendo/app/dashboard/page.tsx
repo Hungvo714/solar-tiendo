@@ -1,4 +1,5 @@
 'use client'
+import BrandLogo from '@/components/BrandLogo'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, zonePct, totalPct, fp, statusOf, elapsedDays, getProjectDates } from '@/lib/calc'
@@ -73,11 +74,7 @@ export default function DashboardPage() {
         justifyContent:'space-between', borderBottom:'1px solid #ffffff12',
         position:'sticky', top:0, zIndex:50 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
-          <div style={{ background:'#8B008B', color:'#fff', fontWeight:700,
-            fontSize:11, width:36, height:36, borderRadius:8, flexShrink:0,
-            display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer',
-            letterSpacing:1, fontStyle:'italic' }}
-            onClick={() => window.location.href='/projects'}>HTE</div>
+          <BrandLogo size={36} onClick={() => window.location.href='/projects'} />
           <div style={{ minWidth:0 }}>
             <div style={{ fontSize:13, fontWeight:700, color:'#fff',
               overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>

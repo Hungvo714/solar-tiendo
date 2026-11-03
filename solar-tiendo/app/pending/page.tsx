@@ -1,4 +1,5 @@
 'use client'
+import BrandLogo from '@/components/BrandLogo'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
@@ -67,9 +68,7 @@ export default function PendingPage() {
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
       minHeight:'100vh', background:'#0a0f1e', padding:16 }}>
       <div style={{ width:'100%', maxWidth:400, textAlign:'center' }}>
-        <div style={{ display:'inline-flex', alignItems:'center', justifyContent:'center',
-          width:56, height:56, background:'#F5A623', borderRadius:14,
-          fontSize:14, fontWeight:700, color:'#0d1b3e', marginBottom:16 }}>HTE</div>
+        <div style={{ display:'inline-flex', marginBottom:16 }}><BrandLogo size={56} /></div>
 
         <div style={{ background:'#0d1b3e', border:'1px solid #ffffff12', borderRadius:14, padding:24 }}>
           {status === 'loading' && <div style={{ fontSize:12, color:'#8899bb' }}>Đang kiểm tra...</div>}
