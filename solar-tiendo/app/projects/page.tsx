@@ -111,10 +111,15 @@ export default function ProjectsPage() {
   }
 
   async function deleteProject(id: string, name: string) {
-    if (!confirm(`Xoá dự án "${name}"?\nToàn bộ data sẽ bị xoá vĩnh viễn.`)) return
+    if (!isSuper) { alert('Chỉ Admin chính được xoá dự án.'); return }
+    if (!confirm(`Xoá dự án "${name}"?\nToàn bộ tiến độ, ngày, khối lượng, thành viên sẽ bị xoá vĩnh viễn.`)) return
+    const typed = prompt(`Để xác nhận, gõ lại chính xác tên dự án:\n${name}`)
+    if (typed == null) return
+    if (typed.trim() !== name.trim()) { alert('Tên không khớp — đã huỷ xoá.'); return }
     setDeleting(id)
-    const { error } = await supabase.from('projects').delete().eq('id', id)
+    const { data, error } = await supabase.from('projects').delete().eq('id', id).select('id')
     if (error) alert('Lỗi: ' + error.message)
+    else if (!data?.length) alert('Không xoá được — chỉ Admin chính có quyền xoá dự án.')
     setDeleting(null)
     loadProjects()
   }
@@ -498,7 +503,7 @@ export default function ProjectsPage() {
                         ⚙️ Hạng mục
                       </button>
                     )}
-                    {isAdmin && (
+                    {isSuper && (
                       <button onClick={() => deleteProject(proj.id, proj.name)}
                         disabled={deleting===proj.id}
                         style={S.btn('#FF444415','#FF8888','#FF4444')}>
