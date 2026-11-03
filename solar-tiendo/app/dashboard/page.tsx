@@ -69,10 +69,12 @@ export default function DashboardPage() {
       background:'#0a0f1e', color:'#e8eaf0', fontFamily:'system-ui,sans-serif', fontSize:13 }}>
 
       {/* HEADER */}
+      {/* Header + thanh tab luôn cố định khi cuộn */}
+      <div style={{ position:'sticky', top:0, zIndex:50 }}>
       <header style={{ background:'linear-gradient(135deg,#0d1b3e,#1a2d5a)',
         padding:'12px 16px', display:'flex', alignItems:'center',
         justifyContent:'space-between', borderBottom:'1px solid #ffffff12',
-        position:'sticky', top:0, zIndex:50 }}>
+         }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
           <BrandLogo size={36} onClick={() => window.location.href='/projects'} />
           <div style={{ minWidth:0 }}>
@@ -119,6 +121,7 @@ export default function DashboardPage() {
           </button>
         ))}
       </nav>
+      </div>
 
       {/* MAIN */}
       <main style={{ flex:1, overflowY:'auto', padding:12 }}>
