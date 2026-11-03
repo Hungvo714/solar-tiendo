@@ -212,7 +212,7 @@ export function QtyStepPanel({ projectId, step, logs, planStart, planEnd, canEnt
 // ---------- Bảng báo cáo khối lượng (Tổng quan / Báo cáo) ----------
 export type QtyRow = { item: any; step: any; s: QtyStats; planStart: string | null }
 
-// Chỉ lấy bước ĐANG THI CÔNG: đã có khối lượng nhập (hoặc hạng mục đã có BD thực tế)
+// Chỉ lấy bước ĐANG THI CÔNG: đã có khối lượng nhập
 // và chưa xong (còn khối lượng, hạng mục chưa có HT thực tế). Chưa làm / đã xong → không hiện.
 export function buildQtyRows(items: any[], logs: QtyLog[], ganttMap: Record<string, any>): QtyRow[] {
   const rows: QtyRow[] = []
@@ -220,7 +220,7 @@ export function buildQtyRows(items: any[], logs: QtyLog[], ganttMap: Record<stri
     if (st.qty_total == null) continue
     const g = ganttMap[it.id] ?? {}
     const s = qtyStats(Number(st.qty_total), st.qty_unit, logs.filter(l => l.step_id === st.id), g.plan_end ?? null)
-    const started = s.done > 0 || !!g.actual_start
+    const started = !!s.firstDate && s.done > 0          // đã có khối lượng nhập thực tế
     const finished = s.remaining <= 0 || !!g.actual_end
     if (!started || finished) continue
     rows.push({ item: it, step: st, planStart: g.plan_start ?? null, s })
