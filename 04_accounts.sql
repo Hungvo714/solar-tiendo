@@ -206,6 +206,69 @@ grant execute on function public.approve_user(uuid, uuid, text)         to authe
 grant execute on function public.reject_user(uuid)                      to authenticated;
 grant execute on function public.update_profile(uuid, text, text, text) to authenticated;
 
+
+-- =====================================================================
+-- 10) Siết quyền (bắt buộc khi mở đăng ký)
+--   - project_members: trước đây "mọi người đăng nhập được làm mọi thứ"
+--     → người tự đăng ký có thể tự gán mình làm Admin. Nay chỉ Admin dự án / Admin chính.
+--   - projects INSERT: trước đây người chưa có dự án nào cũng tạo được dự án.
+-- =====================================================================
+create or replace function public.is_project_admin(pid uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.project_members
+                 where project_id = pid and user_id = auth.uid() and role = 'admin');
+$$;
+create or replace function public.is_project_member(pid uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.project_members
+                 where project_id = pid and user_id = auth.uid());
+$$;
+create or replace function public.has_admin_role()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.project_members
+                 where user_id = auth.uid() and role = 'admin');
+$$;
+-- Dự án vừa tạo: chưa có thành viên nào ngoài Admin chính (trigger tự thêm)
+create or replace function public.project_is_new(pid uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select not exists (select 1 from public.project_members m
+                     where m.project_id = pid
+                       and m.user_id not in (select user_id from public.app_admins));
+$$;
+grant execute on function public.project_is_new(uuid)    to authenticated;
+grant execute on function public.is_project_admin(uuid)  to authenticated;
+grant execute on function public.is_project_member(uuid) to authenticated;
+grant execute on function public.has_admin_role()        to authenticated;
+
+drop policy if exists "Allow all for authenticated" on public.project_members;
+drop policy if exists "pm_select" on public.project_members;
+drop policy if exists "pm_insert" on public.project_members;
+drop policy if exists "pm_update" on public.project_members;
+drop policy if exists "pm_delete" on public.project_members;
+
+create policy "pm_select" on public.project_members for select
+  using (user_id = auth.uid() or public.is_project_member(project_id) or public.is_super_admin());
+
+create policy "pm_insert" on public.project_members for insert
+  with check (
+    public.is_super_admin()
+    or public.is_project_admin(project_id)
+    -- người tạo dự án mới tự gán mình làm Admin (chỉ người đã là Admin ở nơi khác mới tạo được dự án)
+    or (user_id = auth.uid() and role = 'admin' and public.has_admin_role()
+        and public.project_is_new(project_id))
+  );
+
+create policy "pm_update" on public.project_members for update
+  using (public.is_super_admin() or public.is_project_admin(project_id))
+  with check (public.is_super_admin() or public.is_project_admin(project_id));
+
+create policy "pm_delete" on public.project_members for delete
+  using (public.is_super_admin() or public.is_project_admin(project_id));
+
+drop policy if exists "Only admin can create project" on public.projects;
+create policy "Only admin can create project" on public.projects for insert
+  with check (public.is_super_admin() or public.has_admin_role());
+
 select 'OK — profiles: ' || (select count(*) from public.profiles)
     || ' · Admin chính: ' || coalesce((select string_agg(u.email, ', ')
          from public.app_admins a join auth.users u on u.id = a.user_id), '(chưa có!)') as result;
