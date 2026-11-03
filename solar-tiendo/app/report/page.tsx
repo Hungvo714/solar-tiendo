@@ -3,7 +3,9 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, zonePct, totalPct, fp, statusOf, getProjectDates } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
-import { getItemsForProject, getSubItems, getZones, getProgress, getGanttDates } from '@/lib/queries'
+import { getItemsForProject, getSubItems, getZones, getProgress, getGanttDates, getQtyLogs } from '@/lib/queries'
+import type { QtyLog } from '@/lib/queries'
+import { QtyReport, buildQtyRows } from '@/components/Qty'
 
 const TABS = [
   { path:'/dashboard', icon:'ti-layout-dashboard', label:'Tổng quan' },
@@ -29,16 +31,18 @@ export default function ReportPage() {
   const [weekNum,     setWeekNum]     = useState('')
   const [reporter,    setReporter]    = useState('')
   const [printMode,   setPrintMode]   = useState(false)
+  const [qtyLogs,     setQtyLogs]     = useState<QtyLog[]>([])
 
   useEffect(() => {
     const pid = new URLSearchParams(window.location.search).get('project') || ''
     if (!pid) { window.location.href = '/projects'; return }
     setProjectId(pid)
     async function load() {
-      const [{ data: proj }, z, it, pr, gd] = await Promise.all([
+      const [{ data: proj }, z, it, pr, gd, ql] = await Promise.all([
         supabase.from('projects').select('*').eq('id', pid).single(),
-        getZones(), getItemsForProject(pid), getProgress(pid), getGanttDates(pid),
+        getZones(), getItemsForProject(pid), getProgress(pid), getGanttDates(pid), getQtyLogs(pid),
       ])
+      setQtyLogs(ql)
       if (!proj) { window.location.href = '/projects'; return }
       setProject(proj); setZones(z); setItems(it as Item[])
       const pm: Record<string, Progress> = {}
@@ -456,6 +460,9 @@ export default function ReportPage() {
                 )
               })}
             </div>
+
+            {/* Khối lượng thi công: năng suất, dự báo ngày xong, cảnh báo trễ */}
+            <QtyReport rows={buildQtyRows(items as any[], qtyLogs, ganttMap as any)} light={printMode} />
 
             {/* Vấn đề phát sinh */}
             <div style={{ marginBottom:12 }}>

@@ -8,6 +8,7 @@ export function itemPct(item: Item, progressMap: Record<string, Progress>): numb
     if (p?.is_na) continue
     totalW += s.weight
     if (p?.is_done) doneW += s.weight
+    else if (p?.progress_pct != null) doneW += s.weight * Math.min(100, Math.max(0, Number(p.progress_pct))) / 100   // bước đo theo khối lượng
   }
   return totalW > 0 ? doneW / totalW : 0
 }

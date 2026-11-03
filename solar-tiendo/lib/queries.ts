@@ -41,6 +41,8 @@ function applySteps(it: any, projectId: string, ov: Record<string, any>, include
         hidden: !!o?.hidden,
         _sort: o?.sort != null ? Number(o.sort) : Number(s.sort_order ?? s.step_index ?? 0),
         is_extra: s.project_id === projectId,         // bước thêm riêng cho dự án
+        qty_total: o?.qty_total != null ? Number(o.qty_total) : null,   // đo theo khối lượng
+        qty_unit:  o?.qty_unit ?? null,
       }
     })
     .sort((a: any, b: any) => a._sort - b._sort || (a.step_index ?? 0) - (b.step_index ?? 0))
@@ -55,7 +57,7 @@ export async function getItemsForProject(projectId: string,
   const [items, { data: settings }, { data: stepSet }] = await Promise.all([
     getItemsWithSteps(),
     supabase.from('project_item_settings').select('item_id, order_days, hidden').eq('project_id', projectId),
-    supabase.from('project_step_settings').select('step_id, name, weight, hidden, sort').eq('project_id', projectId),
+    supabase.from('project_step_settings').select('step_id, name, weight, hidden, sort, qty_total, qty_unit').eq('project_id', projectId),
   ])
   const st: Record<string, { order_days: number; hidden: boolean }> = {}
   for (const s of settings ?? []) st[(s as any).item_id] = s as any
@@ -88,6 +90,14 @@ export async function getProjectDependencies(projectId: string, items: any[]) {
       item_id: d.item_id as string, depends_on_item_id: d.depends_on_item_id as string,
       lag_days: (d.lag_days ?? 0) as number,
     }))
+}
+
+// Nhật ký khối lượng hằng ngày của dự án (bước đo theo khối lượng)
+export type QtyLog = { id: string; project_id: string; step_id: string; log_date: string; qty: number; note: string | null; created_by: string | null; created_at: string }
+export async function getQtyLogs(projectId: string): Promise<QtyLog[]> {
+  const { data } = await supabase.from('step_qty_logs').select('*')
+    .eq('project_id', projectId).order('log_date').order('created_at')
+  return (data ?? []).map((l: any) => ({ ...l, qty: Number(l.qty) }))
 }
 
 // Vật tư phụ (hạng mục con) RIÊNG của dự án

@@ -3,7 +3,9 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, fp, statusOf } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
-import { getItemsForProject, getProjectDependencies, getSubItems, getZones, getProgress, getGanttDates, upsertProgress, upsertGantt } from '@/lib/queries'
+import { getItemsForProject, getProjectDependencies, getSubItems, getZones, getProgress, getGanttDates, upsertProgress, upsertGantt, getQtyLogs } from '@/lib/queries'
+import type { QtyLog } from '@/lib/queries'
+import { QtyStepPanel, QtyConfig } from '@/components/Qty'
 import { addDays, diffDays, fmtVN, earliestPlanStart, requiredArrival, cascadePlan, actualWarnings } from '@/lib/schedule'
 import type { Dep, PlanChange, StartReason } from '@/lib/schedule'
 
@@ -36,6 +38,12 @@ export default function ProgressPage() {
   const [dependencies, setDependencies] = useState<Dep[]>([])
   const [subItems,     setSubItems]     = useState<Record<string, any[]>>({})
   const [editSubItem,  setEditSubItem]  = useState<{itemId:string, sub?:any}|null>(null)
+  // Bước đo theo khối lượng
+  const [qtyLogs,      setQtyLogs]      = useState<QtyLog[]>([])
+  const [authors,      setAuthors]      = useState<Record<string, string>>({})
+  const [isSuper,      setIsSuper]      = useState(false)
+  const [userId,       setUserId]       = useState('')
+  const [qtyCfg,       setQtyCfg]       = useState<string | null>(null)
   // Hộp thoại xung đột ngày kế hoạch
   const [dateDlg,      setDateDlg]      = useState<
     | { kind: 'start'; item: any; value: string; earliest: string; bad: StartReason[];
@@ -49,11 +57,14 @@ export default function ProgressPage() {
     setProjectId(pid)
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
-      const [{ data: proj }, z, it, pr, gd, { data: memberData }] = await Promise.all([
+      const [{ data: proj }, z, it, pr, gd, { data: memberData }, ql, { data: sup }, { data: au }] = await Promise.all([
         supabase.from('projects').select('*').eq('id', pid).single(),
         getZones(), getItemsForProject(pid), getProgress(pid), getGanttDates(pid),
         supabase.from('project_members').select('role').eq('project_id', pid).eq('user_id', user?.id ?? '').single(),
+        getQtyLogs(pid), supabase.rpc('is_super_admin'), supabase.rpc('qty_log_authors', { pid }),
       ])
+      setUserId(user?.id ?? ''); setIsSuper(!!sup); setQtyLogs(ql)
+      setAuthors(Object.fromEntries(((au as any[]) ?? []).map(a => [a.user_id, a.label])))
       // Điều kiện liên quan RIÊNG của dự án (chỉ giữa các mục đang hiển thị)
       const deps = await getProjectDependencies(pid, it as any[])
       if (!proj) { window.location.href = '/projects'; return }
@@ -129,6 +140,30 @@ export default function ProgressPage() {
     if (!confirm('Xoá vật tư phụ này?')) return
     await supabase.from('sub_items').delete().eq('id', subId).eq('project_id', projectId)
     setSubItems(prev => ({ ...prev, [itemId]: (prev[itemId] ?? []).filter(s => s.id !== subId) }))
+  }
+
+  // ===================== KHỐI LƯỢNG =====================
+  const canQtyEntry  = !isViewer || isSuper          // Editor / Admin dự án (và Admin chính)
+  const canQtyConfig = isAdmin || isSuper            // Admin dự án / Admin chính đặt tổng
+  // Sau khi nhập/sửa/xoá: tải lại nhật ký + % các bước + ngày thực tế của hạng mục (trigger đã tính)
+  async function reloadQty(item: any) {
+    const ids = (item.steps ?? []).map((s: any) => s.id)
+    const [ql, { data: pr }, { data: g }, { data: au }] = await Promise.all([
+      getQtyLogs(projectId),
+      supabase.from('progress').select('*').eq('project_id', projectId).in('step_id', ids),
+      supabase.from('gantt_dates').select('*').eq('project_id', projectId).eq('item_id', item.id).maybeSingle(),
+      supabase.rpc('qty_log_authors', { pid: projectId }),
+    ])
+    setQtyLogs(ql)
+    setProgressMap(prev => { const n = { ...prev }; for (const p of pr ?? []) n[(p as any).step_id] = p as any; return n })
+    if (g) setGanttMap(prev => ({ ...prev, [item.id]: g as any }))
+    setAuthors(Object.fromEntries(((au as any[]) ?? []).map(a => [a.user_id, a.label])))
+  }
+  // Sau khi đặt/bỏ tổng: tải lại cấu hình bước của dự án
+  async function reloadItems(item: any) {
+    const it = await getItemsForProject(projectId)
+    setItems(it as Item[]); setQtyCfg(null)
+    await reloadQty(item)
   }
 
   // ===================== LIÊN KẾT NGÀY (quy tắc: lib/schedule.ts) =====================
@@ -516,14 +551,18 @@ export default function ProgressPage() {
                 const p    = progressMap[step.id]
                 const done = !!p?.is_done
                 const na   = !!p?.is_na
+                const isQty = step.qty_total != null
+                const lock = isViewer || isQty               // bước đo khối lượng: tự tick theo lũy kế
                 return (
-                  <div key={step.id} style={{ display:'flex', alignItems:'center', gap:8,
+                  <div key={step.id}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8,
                     padding:'7px 9px', borderRadius:7,
                     background: done ? '#1a3a1a' : na ? '#ffffff05' : '#ffffff06' }}>
-                    <div onClick={() => !isViewer && toggleStep(step.id, done, item)}
+                    <div onClick={() => !lock && toggleStep(step.id, done, item)}
+                      title={isQty ? 'Tự đánh dấu khi đủ khối lượng' : undefined}
                       style={{ width:16, height:16, borderRadius:4, flexShrink:0,
-                        cursor: isViewer ? 'not-allowed' : 'pointer',
-                        opacity: isViewer ? 0.5 : 1,
+                        cursor: lock ? 'not-allowed' : 'pointer',
+                        opacity: lock ? 0.5 : 1,
                         border:`1.5px solid ${done ? '#4ade80' : '#8899bb'}`,
                         background: done ? '#1a3a1a' : 'transparent',
                         display:'flex', alignItems:'center', justifyContent:'center',
@@ -534,18 +573,40 @@ export default function ProgressPage() {
                       color: na ? '#8899bb' : '#c0d0ef',
                       textDecoration: done || na ? 'line-through' : 'none' }}>
                       {step.name}
+                      {isQty && !done && p?.progress_pct != null && (
+                        <span style={{ marginLeft:6, fontSize:9.5, color:'#4ade80', fontFamily:'monospace' }}>
+                          {Number(p.progress_pct).toFixed(1)}%
+                        </span>
+                      )}
                     </span>
+                    {canQtyConfig && (
+                      <span onClick={() => setQtyCfg(qtyCfg === step.id ? null : step.id)}
+                        title={isQty ? 'Sửa tổng khối lượng' : 'Đo theo khối lượng (nhập số lượng hằng ngày)'}
+                        style={{ fontSize:10, cursor:'pointer', opacity: isQty ? 1 : 0.45 }}>📏</span>
+                    )}
                     <span style={{ fontFamily:'monospace', fontSize:10, color:'#8899bb' }}>
                       {step.weight}%
                     </span>
-                    <div onClick={() => !isViewer && toggleNA(step.id, na)}
+                    <div onClick={() => !lock && toggleNA(step.id, na)}
                       style={{ fontSize:9, padding:'2px 6px', borderRadius:6,
-                        cursor: isViewer ? 'not-allowed' : 'pointer',
+                        cursor: lock ? 'not-allowed' : 'pointer',
                         background: na ? '#7030A022' : '#ffffff08',
                         color: na ? '#a060d0' : '#8899bb',
                         border: `1px solid ${na ? '#7030A0' : 'transparent'}` }}>
                       N/A
                     </div>
+                  </div>
+                  {qtyCfg === step.id && (
+                    <QtyConfig projectId={projectId} step={step}
+                      onDone={() => reloadItems(item)} onCancel={() => setQtyCfg(null)} />
+                  )}
+                  {isQty && qtyCfg !== step.id && (
+                    <QtyStepPanel projectId={projectId} step={step}
+                      logs={qtyLogs.filter(l => l.step_id === step.id)}
+                      planStart={(ganttMap[item.id] as any)?.plan_start} planEnd={(ganttMap[item.id] as any)?.plan_end}
+                      canEntry={canQtyEntry} canManageAll={canQtyConfig} userId={userId} authors={authors}
+                      onChanged={() => reloadQty(item)} />
+                  )}
                   </div>
                 )
               })}
