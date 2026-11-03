@@ -29,7 +29,7 @@ export default function ProjectsPage() {
   const [editProject,  setEditProject]  = useState<any|null>(null)
   const [editForm,     setEditForm]     = useState({ name:'', client:'', contractor:'', location:'', start_date:'', total_days:'' })
   const [form, setForm] = useState({
-    name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60', location:'', location:''
+    name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60', location:''
   })
 
   useEffect(() => { loadProjects() }, [])

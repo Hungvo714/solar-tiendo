@@ -88,3 +88,26 @@ create policy "labor_productivity_read" on public.labor_productivity for select 
   using (project_id is null or public.is_project_member(project_id) or public.is_super_admin());
 
 -- (items, steps, zones, item_dependencies là danh mục mẫu chung, không có dữ liệu dự án → giữ đọc công khai)
+
+-- =====================================================================
+-- (migration app_meta_for_cron) Phục vụ tác vụ tự động hằng ngày /api/cron/daily
+-- =====================================================================
+create table if not exists public.app_meta (
+  key text primary key, value text, updated_at timestamptz not null default now()
+);
+alter table public.app_meta enable row level security;
+create or replace function public.last_user_activity()
+returns timestamptz language sql stable security definer set search_path = public as $$
+  select max(t) from (
+    select max(last_sign_in_at) t from auth.users
+    union all select max(updated_at) from public.progress
+    union all select max(updated_at) from public.gantt_dates
+    union all select max(done_at)    from public.sub_items
+    union all select max(created_at) from public.weekly_reports
+    union all select max(updated_at) from public.project_item_settings
+    union all select max(added_at)   from public.project_members
+  ) x;
+$$;
+revoke execute on function public.last_user_activity() from public, anon, authenticated;
+grant  execute on function public.last_user_activity() to service_role;
+grant all on table public.app_meta to service_role;
