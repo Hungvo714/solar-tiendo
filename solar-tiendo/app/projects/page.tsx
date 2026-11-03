@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 
 type Project = {
   id: string; name: string; client: string; contractor: string
-  start_date: string; total_days: number; role?: string
+  start_date: string; total_days: number; role?: string; share_token?: string
 }
 type Member = { user_id: string; role: string; email?: string|null; full_name?: string|null }
 
@@ -232,11 +232,20 @@ export default function ProjectsPage() {
     loadProjects()
   }
 
-  function copyLink(id: string) {
-    const url = window.location.origin + '/view/' + id
-    navigator.clipboard.writeText(url)
-    setCopied(id)
+  const shareUrl = (p: Project) => window.location.origin + '/view/' + (p.share_token ?? p.id)
+
+  function copyLink(p: Project) {
+    navigator.clipboard.writeText(shareUrl(p))
+    setCopied(p.id)
     setTimeout(() => setCopied(null), 2500)
+  }
+
+  async function regenerateLink(p: Project) {
+    if (!confirm(`Đổi link CĐT của "${p.name}"?\n\nLink cũ sẽ KHÔNG mở được nữa. Bạn cần gửi link mới cho CĐT.`)) return
+    const { error } = await supabase.rpc('regenerate_share_token', { pid: p.id })
+    if (error) { alert('Lỗi: ' + error.message); return }
+    await loadProjects()
+    alert('✅ Đã tạo link mới. Bấm "Link CĐT" để copy.')
   }
 
   const roleInfo = (r: string) => r==='admin'
@@ -467,7 +476,7 @@ export default function ProjectsPage() {
                       style={{ ...S.btn('#F5A623','#0d1b3e'), flex:1 }}>
                       📊 Vào dự án
                     </button>
-                    <button onClick={() => copyLink(proj.id)}
+                    <button onClick={() => copyLink(proj)}
                       style={S.btn(copied===proj.id?'#276221':'#17375E22',
                         copied===proj.id?'#fff':'#60a5fa', '#2E75B6')}>
                       {copied===proj.id ? '✅ Đã copy!' : '🔗 Link CĐT'}
@@ -496,7 +505,14 @@ export default function ProjectsPage() {
                   {/* Link preview */}
                   <div style={{ padding:'6px 10px', background:'#ffffff06', borderRadius:7,
                     fontSize:10, color:'#8899bb', fontFamily:'monospace', wordBreak:'break-all' as any }}>
-                    🔗 {window.location.origin}/view/{proj.id}
+                    🔗 {shareUrl(proj)}
+                    {isAdmin && proj.role === 'admin' && (
+                      <button onClick={() => regenerateLink(proj)} title="Tạo link mới, link cũ hết hiệu lực"
+                        style={{ marginLeft:8, background:'transparent', border:'1px solid #ffffff20', borderRadius:5,
+                          color:'#8899bb', fontSize:10, padding:'2px 6px', cursor:'pointer', fontFamily:'inherit' }}>
+                        🔄 Đổi link
+                      </button>
+                    )}
                   </div>
 
                   {/* Members Panel */}

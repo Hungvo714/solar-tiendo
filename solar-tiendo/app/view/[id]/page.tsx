@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, zonePct, totalPct, fp, statusOf, elapsedDays, getProjectDates } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
-import { getItemsWithSteps, getZones, getProgress, getGanttDates } from '@/lib/queries'
+import { getItemsWithSteps, getZones } from '@/lib/queries'
 
 export default function PublicViewPage() {
   const [project,     setProject]     = useState<Project | null>(null)
@@ -16,14 +16,18 @@ export default function PublicViewPage() {
 
   useEffect(() => {
     const parts = window.location.pathname.split('/')
-    const pid = parts[parts.length - 1]
-    if (!pid || pid === 'view') { setNotFound(true); setLoading(false); return }
+    const token = decodeURIComponent(parts[parts.length - 1] || '')
+    if (!token || token === 'view') { setNotFound(true); setLoading(false); return }
     async function load() {
-      const [{ data: proj }, z, it, pr, gd] = await Promise.all([
-        supabase.from('projects').select('*').eq('id', pid).single(),
-        getZones(), getItemsWithSteps(), getProgress(pid), getGanttDates(pid),
+      // Chỉ lấy đúng 1 dự án theo mã chia sẻ (hàm get_shared_project phía máy chủ)
+      const [{ data: shared }, z, it] = await Promise.all([
+        supabase.rpc('get_shared_project', { p_token: token }),
+        getZones(), getItemsWithSteps(),
       ])
+      const proj = (shared as any)?.project
       if (!proj) { setNotFound(true); setLoading(false); return }
+      const pr = ((shared as any).progress ?? []) as any[]
+      const gd = ((shared as any).gantt ?? []) as any[]
       setProject(proj); setZones(z); setItems(it as Item[])
       const pm: Record<string, Progress> = {}
       for (const p of pr) pm[(p as Progress).step_id] = p as Progress
@@ -48,6 +52,7 @@ export default function PublicViewPage() {
       height:'100vh', background:'#0a0f1e', color:'#8899bb', flexDirection:'column', gap:12 }}>
       <div style={{ fontSize:40 }}>❌</div>
       <div style={{ fontSize:16, fontWeight:600, color:'#e8eaf0' }}>Không tìm thấy dự án</div>
+      <div style={{ fontSize:12 }}>Link không đúng hoặc đã được đổi. Liên hệ nhà thầu để nhận link mới.</div>
     </div>
   )
 
