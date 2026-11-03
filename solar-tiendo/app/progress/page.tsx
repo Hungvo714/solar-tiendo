@@ -89,13 +89,19 @@ export default function ProgressPage() {
   }, [])
 
   async function resetAll() {
-    if (!confirm('⚠️ Xóa TẤT CẢ dữ liệu đã nhập của dự án này?\n\nBao gồm:\n- Tất cả tick hoàn thành / N/A\n- Tất cả ngày BD/HT kế hoạch và thực tế\n\nHành động này KHÔNG THỂ hoàn tác!')) return
+    if (!confirm('⚠️ Xóa TẤT CẢ dữ liệu đã nhập của dự án này?\n\nBao gồm:\n- Tất cả tick hoàn thành / N/A\n- Tất cả ngày BD/HT kế hoạch và thực tế\n- Toàn bộ khối lượng đã nhập\n\nHành động này KHÔNG THỂ hoàn tác!')) return
     if (!confirm('Xác nhận lần 2: Bạn chắc chắn muốn xóa hết?')) return
 
-    // Xóa progress
-    await supabase.from('progress').delete().eq('project_id', projectId)
-    // Xóa gantt dates
-    await supabase.from('gantt_dates').delete().eq('project_id', projectId)
+    if (!isSuper) { alert('Chỉ Admin chính được xoá toàn bộ dữ liệu dự án.'); return }
+    const typed = prompt(`Gõ lại chính xác tên dự án để xác nhận:\n${project?.name ?? ''}`)
+    if (typed == null) return
+    if (typed.trim() !== (project?.name ?? '').trim()) { alert('Tên không khớp — đã huỷ.'); return }
+    // Thứ tự: nhật ký khối lượng → tick → ngày
+    const r1 = await supabase.from('step_qty_logs').delete().eq('project_id', projectId)
+    const r2 = await supabase.from('progress').delete().eq('project_id', projectId)
+    const r3 = await supabase.from('gantt_dates').delete().eq('project_id', projectId)
+    const err = r1.error || r2.error || r3.error
+    if (err) { alert('Lỗi: ' + err.message); return }
     // Reset state
     setProgressMap({})
     setGanttMap({})
@@ -901,7 +907,7 @@ export default function ProgressPage() {
         </div>
 
         {/* Nút Reset - chỉ Admin */}
-        {isAdmin && (
+        {isSuper && (
           <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:6 }}>
             <button onClick={resetAll}
               style={{ padding:'5px 12px', background:'transparent',
