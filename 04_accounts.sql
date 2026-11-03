@@ -1,5 +1,5 @@
 -- =====================================================================
--- 04_accounts.sql — Tài khoản: tự đăng ký (chờ duyệt) + hiển thị email
+-- 04_accounts.sql — Tài khoản: tự đăng ký (chờ duyệt), Admin chính, quản lý user
 -- Chạy 1 lần trong Supabase › SQL Editor › New query › Run
 -- Chạy lại nhiều lần cũng an toàn.
 -- =====================================================================
@@ -16,7 +16,28 @@ create table if not exists public.profiles (
   created_at  timestamptz not null default now()
 );
 
--- 2) Tự tạo hồ sơ khi có tài khoản mới trong Supabase Auth
+-- 2) Admin chính (toàn quyền duyệt và quản lý user)
+--    Muốn thêm Admin chính sau này: insert thêm 1 dòng vào bảng này.
+create table if not exists public.app_admins (
+  user_id     uuid primary key references auth.users(id) on delete cascade,
+  created_at  timestamptz not null default now()
+);
+alter table public.app_admins enable row level security;
+-- (không có policy → không ai đọc/sửa trực tiếp được, chỉ qua hàm bên dưới)
+
+insert into public.app_admins (user_id)
+select id from auth.users where lower(email) = 'vn.hung714@gmail.com'
+on conflict do nothing;
+
+create or replace function public.is_super_admin()
+returns boolean
+language sql stable
+security definer set search_path = public
+as $$
+  select exists (select 1 from public.app_admins where user_id = auth.uid());
+$$;
+
+-- 3) Tự tạo hồ sơ khi có tài khoản mới
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -25,12 +46,11 @@ as $$
 begin
   insert into public.profiles (id, email, full_name, phone, company, status)
   values (
-    new.id,
-    new.email,
+    new.id, new.email,
     new.raw_user_meta_data->>'full_name',
     new.raw_user_meta_data->>'phone',
     new.raw_user_meta_data->>'company',
-    coalesce(new.raw_user_meta_data->>'status', 'pending')
+    'pending'          -- luôn chờ duyệt; Admin chính tạo thì API tự chuyển 'approved'
   )
   on conflict (id) do nothing;
   return new;
@@ -42,97 +62,150 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- 3) Tạo hồ sơ cho các tài khoản đã có từ trước
---    (ai đang là thành viên dự án → 'approved', còn lại → 'pending')
+-- 4) Hồ sơ cho tài khoản đã có (đang là thành viên dự án → 'approved')
 insert into public.profiles (id, email, status, created_at)
 select u.id, u.email,
        case when exists (select 1 from public.project_members m where m.user_id = u.id)
+              or exists (select 1 from public.app_admins a where a.user_id = u.id)
             then 'approved' else 'pending' end,
        u.created_at
 from auth.users u
 on conflict (id) do nothing;
 
--- 4) Hàm kiểm tra: người đang đăng nhập có là Admin của ít nhất 1 dự án?
-create or replace function public.is_any_admin()
-returns boolean
-language sql stable
-security definer set search_path = public
-as $$
-  select exists (
-    select 1 from public.project_members
-    where user_id = auth.uid() and role = 'admin'
-  );
-$$;
-
--- 5) Quyền đọc bảng profiles: chính mình, hoặc Admin
+-- 5) Quyền đọc profiles: chính mình, Admin chính, hoặc người cùng dự án
 alter table public.profiles enable row level security;
-
 drop policy if exists "profiles_select_self_or_admin" on public.profiles;
-create policy "profiles_select_self_or_admin" on public.profiles
-  for select using (id = auth.uid() or public.is_any_admin());
+drop policy if exists "profiles_select" on public.profiles;
+create policy "profiles_select" on public.profiles
+  for select using (
+    id = auth.uid()
+    or public.is_super_admin()
+    or exists (
+      select 1 from public.project_members me
+      join public.project_members them on them.project_id = me.project_id
+      where me.user_id = auth.uid() and them.user_id = profiles.id
+    )
+  );
 
--- (Không cho sửa trực tiếp; mọi thay đổi đi qua các hàm bên dưới)
+-- Dọn các hàm của bản nháp trước (nếu đã chạy)
+drop function if exists public.is_any_admin() cascade;
+drop function if exists public.list_pending_users();
 
--- 6) Danh sách tài khoản đang chờ duyệt (chỉ Admin gọi được)
-create or replace function public.list_pending_users()
-returns setof public.profiles
+-- 6) Danh sách toàn bộ user (chỉ Admin chính)
+drop function if exists public.list_managed_users();
+create or replace function public.list_all_users()
+returns table (
+  user_id uuid, email text, full_name text, phone text, company text,
+  status text, is_super_admin boolean,
+  created_at timestamptz, last_sign_in_at timestamptz,
+  memberships jsonb
+)
 language plpgsql stable
 security definer set search_path = public
 as $$
 begin
-  if not public.is_any_admin() then
-    raise exception 'Chỉ Admin mới xem được danh sách chờ duyệt';
+  if not public.is_super_admin() then
+    raise exception 'Chỉ Admin chính mới xem được danh sách người dùng';
   end if;
   return query
-    select p.* from public.profiles p
-    where p.status = 'pending'
-      and not exists (select 1 from public.project_members m where m.user_id = p.id)
-    order by p.created_at desc;
+  select
+    u.id, u.email::text, p.full_name, p.phone, p.company,
+    coalesce(p.status, 'approved'),
+    exists (select 1 from public.app_admins a where a.user_id = u.id),
+    u.created_at, u.last_sign_in_at,
+    coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'project_id', m.project_id, 'project_name', pr.name, 'role', m.role
+      ) order by pr.name)
+      from public.project_members m join public.projects pr on pr.id = m.project_id
+      where m.user_id = u.id
+    ), '[]'::jsonb)
+  from auth.users u
+  left join public.profiles p on p.id = u.id
+  order by (coalesce(p.status,'approved') = 'pending') desc, u.created_at desc;
 end;
 $$;
 
--- 7) Duyệt: gán vào dự án với vai trò (người gọi phải là Admin của dự án đó)
+-- 7) Danh sách tất cả dự án (để Admin chính gán người vào dự án bất kỳ)
+create or replace function public.list_all_projects()
+returns table (id uuid, name text)
+language plpgsql stable
+security definer set search_path = public
+as $$
+begin
+  if not public.is_super_admin() then
+    raise exception 'Chỉ Admin chính';
+  end if;
+  return query select pr.id, pr.name::text from public.projects pr order by pr.name;
+end;
+$$;
+
+-- 8) Gán / đổi vai trò / gỡ khỏi dự án (chỉ Admin chính)
+create or replace function public.set_membership(target_user uuid, target_project uuid, target_role text)
+returns void
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if not public.is_super_admin() then raise exception 'Chỉ Admin chính'; end if;
+  if target_role is null or target_role = 'none' then
+    delete from public.project_members where project_id = target_project and user_id = target_user;
+    return;
+  end if;
+  if target_role not in ('admin','editor','viewer') then raise exception 'Vai trò không hợp lệ'; end if;
+  insert into public.project_members (project_id, user_id, role)
+  values (target_project, target_user, target_role)
+  on conflict (project_id, user_id) do update set role = excluded.role;
+  update public.profiles set status = 'approved' where id = target_user and status <> 'approved';
+end;
+$$;
+
+-- 9) Duyệt / từ chối / sửa thông tin (chỉ Admin chính)
+drop function if exists public.approve_user(uuid, uuid, text);
 create or replace function public.approve_user(target_user uuid, target_project uuid, target_role text)
 returns void
 language plpgsql
 security definer set search_path = public
 as $$
 begin
-  if target_role not in ('admin','editor','viewer') then
-    raise exception 'Vai trò không hợp lệ';
-  end if;
-  if not exists (
-    select 1 from public.project_members
-    where project_id = target_project and user_id = auth.uid() and role = 'admin'
-  ) then
-    raise exception 'Bạn không phải Admin của dự án này';
-  end if;
-
-  insert into public.project_members (project_id, user_id, role)
-  values (target_project, target_user, target_role)
-  on conflict (project_id, user_id) do update set role = excluded.role;
-
-  update public.profiles set status = 'approved' where id = target_user;
+  perform public.set_membership(target_user, target_project, coalesce(target_role, 'editor'));
 end;
 $$;
 
--- 8) Từ chối
 create or replace function public.reject_user(target_user uuid)
 returns void
 language plpgsql
 security definer set search_path = public
 as $$
 begin
-  if not public.is_any_admin() then
-    raise exception 'Chỉ Admin mới từ chối được';
-  end if;
+  if not public.is_super_admin() then raise exception 'Chỉ Admin chính'; end if;
   update public.profiles set status = 'rejected' where id = target_user;
 end;
 $$;
 
-grant execute on function public.is_any_admin()                    to authenticated;
-grant execute on function public.list_pending_users()              to authenticated;
-grant execute on function public.approve_user(uuid, uuid, text)    to authenticated;
-grant execute on function public.reject_user(uuid)                 to authenticated;
+create or replace function public.update_profile(target_user uuid, p_full_name text, p_phone text, p_company text)
+returns void
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if not (public.is_super_admin() or target_user = auth.uid()) then raise exception 'Không có quyền'; end if;
+  update public.profiles
+     set full_name = nullif(trim(p_full_name), ''),
+         phone     = nullif(trim(p_phone), ''),
+         company   = nullif(trim(p_company), '')
+   where id = target_user;
+end;
+$$;
 
-select 'OK — đã tạo profiles: ' || count(*) || ' tài khoản' as result from public.profiles;
+grant execute on function public.is_super_admin()                       to authenticated;
+grant execute on function public.list_all_users()                       to authenticated;
+grant execute on function public.list_all_projects()                    to authenticated;
+grant execute on function public.set_membership(uuid, uuid, text)       to authenticated;
+grant execute on function public.approve_user(uuid, uuid, text)         to authenticated;
+grant execute on function public.reject_user(uuid)                      to authenticated;
+grant execute on function public.update_profile(uuid, text, text, text) to authenticated;
+
+select 'OK — profiles: ' || (select count(*) from public.profiles)
+    || ' · Admin chính: ' || coalesce((select string_agg(u.email, ', ')
+         from public.app_admins a join auth.users u on u.id = a.user_id), '(chưa có!)') as result;
