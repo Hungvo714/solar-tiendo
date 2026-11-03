@@ -49,7 +49,12 @@ export default function LoginPage() {
                 fontFamily:'inherit', fontSize:13, outline:'none', boxSizing:'border-box' }}/>
           </div>
           <div style={{ marginBottom:20 }}>
-            <label style={{ fontSize:11, color:'#8899bb', display:'block', marginBottom:6 }}>Mật khẩu</label>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:6 }}>
+              <label style={{ fontSize:11, color:'#8899bb' }}>Mật khẩu</label>
+              <a href="/forgot-password" style={{ fontSize:11, color:'#F5A623', textDecoration:'none' }}>
+                Quên mật khẩu?
+              </a>
+            </div>
             <input type="password" value={password} onChange={e => setPassword(e.target.value)} required
               placeholder="••••••••"
               style={{ width:'100%', background:'#0a0f1e', border:'1px solid #ffffff20',
