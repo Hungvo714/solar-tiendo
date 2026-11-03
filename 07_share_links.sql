@@ -33,13 +33,13 @@ end;
 $$;
 grant execute on function public.get_shared_project(text) to anon, authenticated;
 
--- 3) Đổi link (link cũ hết hiệu lực) — Admin dự án hoặc Admin chính
+-- 3) Đổi link (link cũ hết hiệu lực) — CHỈ Admin chính
 create or replace function public.regenerate_share_token(pid uuid)
 returns text language plpgsql security definer set search_path = public as $$
 declare t text := replace(gen_random_uuid()::text, '-', '') || substr(replace(gen_random_uuid()::text, '-', ''), 1, 8);
 begin
-  if not (public.is_project_admin(pid) or public.is_super_admin()) then
-    raise exception 'Chỉ Admin dự án mới đổi được link';
+  if not public.is_super_admin() then
+    raise exception 'Chỉ Admin chính mới đổi được link';
   end if;
   update public.projects set share_token = t where id = pid;
   return t;

@@ -506,7 +506,7 @@ export default function ProjectsPage() {
                   <div style={{ padding:'6px 10px', background:'#ffffff06', borderRadius:7,
                     fontSize:10, color:'#8899bb', fontFamily:'monospace', wordBreak:'break-all' as any }}>
                     🔗 {shareUrl(proj)}
-                    {isAdmin && proj.role === 'admin' && (
+                    {isSuper && (
                       <button onClick={() => regenerateLink(proj)} title="Tạo link mới, link cũ hết hiệu lực"
                         style={{ marginLeft:8, background:'transparent', border:'1px solid #ffffff20', borderRadius:5,
                           color:'#8899bb', fontSize:10, padding:'2px 6px', cursor:'pointer', fontFamily:'inherit' }}>
