@@ -26,25 +26,45 @@ export function numberItems<T extends { hidden?: boolean }>(items: T[]): (T & { 
   let n = 0
   return items.map(it => ({ ...it, no: it.hidden ? null : ++n }))
 }
-const sortSteps = (it: any) => ({
-  ...it,
-  steps: [...(it.steps ?? [])].sort((a: any, b: any) =>
-    (a.sort_order ?? 0) - (b.sort_order ?? 0) || (a.step_index ?? 0) - (b.step_index ?? 0)),
-})
+// Áp cấu hình BƯỚC của dự án (project_step_settings): tên, trọng số, ẩn, thứ tự;
+// chỉ giữ bước mẫu + bước thêm riêng của đúng dự án này.
+function applySteps(it: any, projectId: string, ov: Record<string, any>, includeHiddenSteps: boolean) {
+  const steps = (it.steps ?? [])
+    .filter((s: any) => s.project_id == null || s.project_id === projectId)
+    .map((s: any) => {
+      const o = ov[s.id]
+      return {
+        ...s,
+        base_name: s.name, base_weight: s.weight,
+        name: o?.name ?? s.name,
+        weight: o?.weight ?? s.weight,
+        hidden: !!o?.hidden,
+        _sort: o?.sort != null ? Number(o.sort) : Number(s.sort_order ?? s.step_index ?? 0),
+        is_extra: s.project_id === projectId,         // bước thêm riêng cho dự án
+      }
+    })
+    .sort((a: any, b: any) => a._sort - b._sort || (a.step_index ?? 0) - (b.step_index ?? 0))
+    .filter((s: any) => includeHiddenSteps || !s.hidden)
+  return { ...it, steps }
+}
 
-// Hạng mục của 1 dự án: mục mẫu + mục thêm riêng, áp số ngày đặt hàng riêng,
+// Hạng mục của 1 dự án: mục mẫu + mục thêm riêng, áp số ngày đặt hàng riêng và cấu hình bước,
 // BỎ các mục bị ẩn (trừ khi includeHidden — dùng cho trang cấu hình, có cờ hidden)
-export async function getItemsForProject(projectId: string, opts: { includeHidden?: boolean } = {}) {
-  const [items, { data: settings }] = await Promise.all([
+export async function getItemsForProject(projectId: string,
+  opts: { includeHidden?: boolean; includeHiddenSteps?: boolean } = {}) {
+  const [items, { data: settings }, { data: stepSet }] = await Promise.all([
     getItemsWithSteps(),
     supabase.from('project_item_settings').select('item_id, order_days, hidden').eq('project_id', projectId),
+    supabase.from('project_step_settings').select('step_id, name, weight, hidden, sort').eq('project_id', projectId),
   ])
   const st: Record<string, { order_days: number; hidden: boolean }> = {}
   for (const s of settings ?? []) st[(s as any).item_id] = s as any
+  const ov: Record<string, any> = {}
+  for (const s of stepSet ?? []) ov[(s as any).step_id] = s
   const list = (items as any[])
     .filter(it => it.project_id == null || it.project_id === projectId)
     .map(it => ({
-      ...sortSteps(it),
+      ...applySteps(it, projectId, ov, !!opts.includeHiddenSteps),
       order_days: st[it.id]?.order_days ?? it.order_days,
       hidden: !!st[it.id]?.hidden,
     }))

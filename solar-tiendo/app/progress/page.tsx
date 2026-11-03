@@ -318,7 +318,7 @@ export default function ProgressPage() {
     const z    = zones.find((zn: any) => zn.id === item.zone_id)
     const st   = statusOf(pct)
     const open = !!expanded[item.id]
-    const steps = (item.steps ?? []).sort((a: any, b: any) => a.step_index - b.step_index)
+    const steps = (item.steps ?? [])   // đã sắp theo cấu hình bước của dự án
     const isA  = item.group_type === 'A'
     const myDeps = dependencies.filter(d => d.item_id === item.id && byId[d.depends_on_item_id])
     const planEarliest = isA ? null : earliestPlanStart(item.id, dependencies, byId, ganttMap as any).date

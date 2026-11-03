@@ -8,7 +8,7 @@ import { getItemsForProject, getZones } from '@/lib/queries'
 //  - Thêm hạng mục mới (tự nhập danh sách bước)
 //  - Sửa điều kiện liên quan ("mục này chờ mục số ...")
 
-type Step = { id?: string; name: string; weight: number }
+type Step = { id?: string; name: string; weight: number; hidden?: boolean; is_extra?: boolean; base_name?: string; base_weight?: number; delete?: boolean }
 type It = {
   id: string; stt: number; name: string; zone_id: string; group_type: 'A'|'B'|'C'; weight: number
   order_days?: number; project_id: string|null; hidden: boolean; steps: Step[]
@@ -82,6 +82,7 @@ export default function ItemsConfigPage() {
   const [showHidden, setShowHidden] = useState(false)
   const [editDeps, setEditDeps] = useState<It|null>(null)
   const [editItem, setEditItem] = useState<It|null>(null)
+  const [editSteps, setEditSteps] = useState<It|null>(null)
   const [adding, setAdding]     = useState(false)
 
   useEffect(() => {
@@ -105,7 +106,7 @@ export default function ItemsConfigPage() {
 
   async function reload(p = pid) {
     const [it, { data: d }] = await Promise.all([
-      getItemsForProject(p, { includeHidden: true }),
+      getItemsForProject(p, { includeHidden: true, includeHiddenSteps: true }),
       supabase.from('project_item_dependencies').select('item_id, depends_on_item_id, lag_days').eq('project_id', p),
     ])
     setItems(it as It[]); setDeps((d ?? []) as Dep[])
@@ -161,6 +162,16 @@ export default function ItemsConfigPage() {
               p_after: f.after || null,
             })
             setAdding(false)
+          })}/>
+      )}
+      {editSteps && (
+        <StepsModal item={editSteps} busy={busy} onClose={() => setEditSteps(null)}
+          onSave={(list) => run(async () => {
+            await rpc('save_item_steps', {
+              pid, p_item: editSteps.id,
+              p_steps: list.map(x => ({ id: x.id ?? null, name: x.name, weight: x.weight, hidden: !!x.hidden, delete: !!x.delete })),
+            })
+            setEditSteps(null)
           })}/>
       )}
       {editItem && (
@@ -232,7 +243,9 @@ export default function ItemsConfigPage() {
                             borderRadius:5, padding:'0 5px' }}>Riêng dự án</span>}
                         </div>
                         <div style={{ fontSize:10, color:C.mute, marginTop:2 }}>
-                          {zoneLabel(it.zone_id)} · trọng số {it.weight} · {it.steps?.length ?? 0} bước
+                          {zoneLabel(it.zone_id)} · trọng số {it.weight} · {(it.steps ?? []).filter(x => !x.hidden).length} bước
+                          {(it.steps ?? []).some(x => x.hidden || x.is_extra || (x.base_name && x.base_name !== x.name) || (x.base_weight != null && x.base_weight !== x.weight))
+                            && <span style={{ color:C.acc }}> · đã chỉnh bước</span>}
                         </div>
                         <div style={{ fontSize:11, marginTop:5, display:'flex', gap:4, flexWrap:'wrap', alignItems:'center' }}>
                           <span style={{ color:C.mute }}>Chờ:</span>
@@ -251,6 +264,7 @@ export default function ItemsConfigPage() {
                         </div>
                       </div>
                       <div style={{ display:'flex', gap:5, flexShrink:0, flexWrap:'wrap', justifyContent:'flex-end' }}>
+                        <button disabled={busy} onClick={() => setEditSteps(it)} style={btn('#1a2d5a', C.text, '#ffffff20')}>📝 Các bước</button>
                         <button disabled={busy} onClick={() => setEditDeps(it)} style={btn('#1a2d5a', C.text, '#4472C4')}>🔗 Điều kiện</button>
                         {it.project_id && (
                           <button disabled={busy} onClick={() => setEditItem(it)} style={btn('#1a2d5a', C.text, '#ffffff20')}>✏️ Sửa</button>
@@ -376,6 +390,83 @@ function DepsModal({ item, items, current, lags, busy, onClose, onSave }: {
       )}
       <div style={{ display:'flex', gap:8, marginTop:14 }}>
         <button disabled={busy} onClick={() => onSave(val, lag)} style={btn('#375623', '#fff')}>{busy ? '⏳' : '✓ Lưu điều kiện'}</button>
+        <button onClick={onClose} style={btn('transparent', C.mute, '#ffffff20')}>Huỷ</button>
+      </div>
+    </Modal>
+  )
+}
+
+/* ---------- Sửa các bước của hạng mục (theo dự án) ---------- */
+function StepsModal({ item, busy, onClose, onSave }: {
+  item: It; busy: boolean; onClose: () => void; onSave: (list: Step[]) => void
+}) {
+  const [list, setList] = useState<Step[]>((item.steps ?? []).map(x => ({ ...x })))
+  const owned = (x: Step) => !x.id || !!x.is_extra || !!item.project_id     // bước do dự án tạo
+  const live = list.filter(x => !x.hidden && !x.delete)
+  const totalW = live.reduce((a, x) => a + (Number(x.weight) || 0), 0)
+  const set = (i: number, patch: Partial<Step>) => setList(prev => prev.map((x, j) => j === i ? { ...x, ...patch } : x))
+  const move = (i: number, d: -1 | 1) => setList(prev => {
+    const j = i + d; if (j < 0 || j >= prev.length) return prev
+    const n = [...prev]; [n[i], n[j]] = [n[j], n[i]]; return n
+  })
+  const submit = () => {
+    if (live.length === 0) { alert('Hạng mục phải còn ít nhất 1 bước'); return }
+    if (live.some(x => !x.name.trim())) { alert('Có bước chưa có tên'); return }
+    onSave(list.map(x => ({ ...x, name: x.name.trim(), weight: Math.max(1, Number(x.weight) || 1) })))
+  }
+  return (
+    <Modal title={`📝 Các bước — mục #${item.no}`} onClose={onClose}>
+      <div style={{ fontSize:12, color:C.mute, marginBottom:10, lineHeight:1.6 }}>
+        <b style={{ color:C.text }}>{item.name}</b> — chỉnh riêng cho dự án này, không ảnh hưởng dự án khác.
+        <br/>% của hạng mục = tổng trọng số các bước đã tick ÷ tổng trọng số các bước đang dùng.
+      </div>
+      {list.map((x, i) => {
+        const off = x.hidden || x.delete
+        const share = !off && totalW ? Math.round((Number(x.weight) || 0) / totalW * 100) : null
+        const renamed = x.base_name && x.base_name !== x.name
+        return (
+          <div key={x.id ?? 'new' + i} style={{ display:'flex', gap:6, alignItems:'center', marginBottom:6,
+            opacity: off ? 0.45 : 1 }}>
+            <div style={{ display:'flex', flexDirection:'column' }}>
+              <button onClick={() => move(i, -1)} disabled={i === 0} style={{ ...btn('transparent', C.mute), padding:'0 5px', fontSize:10 }}>▲</button>
+              <button onClick={() => move(i, 1)} disabled={i === list.length - 1} style={{ ...btn('transparent', C.mute), padding:'0 5px', fontSize:10 }}>▼</button>
+            </div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <input value={x.name} disabled={off} onChange={e => set(i, { name: e.target.value })}
+                placeholder="Tên bước" style={inp}/>
+              <div style={{ fontSize:9, color:'#ffffff50', marginTop:2 }}>
+                {!x.id ? 'Bước mới' : x.is_extra || item.project_id ? 'Bước riêng dự án' : 'Bước mẫu'}
+                {renamed && ` · gốc: "${x.base_name}"`}
+                {x.delete ? ' · sẽ xoá' : x.hidden ? ' · đang ẩn' : ''}
+              </div>
+            </div>
+            <input type="number" min={1} value={x.weight} disabled={off} title="Trọng số bước"
+              onChange={e => set(i, { weight: parseInt(e.target.value) || 1 })} style={{ ...inp, width:60 }}/>
+            <span style={{ width:34, fontSize:10, color:C.mute, textAlign:'right' }}>{share != null ? share + '%' : ''}</span>
+            {off ? (
+              <button onClick={() => set(i, { hidden: false, delete: false })} style={btn('#375623', '#fff')}>↩</button>
+            ) : owned(x) ? (
+              <button title={x.id ? 'Xoá (nếu đã có dữ liệu tick sẽ chỉ ẩn)' : 'Bỏ bước mới'}
+                onClick={() => x.id ? set(i, { delete: true }) : setList(prev => prev.filter((_, j) => j !== i))}
+                style={btn('#FF444415', '#FF8888')}>✕</button>
+            ) : (
+              <button title="Ẩn bước mẫu khỏi dự án này" onClick={() => set(i, { hidden: true })}
+                style={btn('#FF444415', '#FF8888')}>🙈</button>
+            )}
+          </div>
+        )
+      })}
+      <button onClick={() => setList(prev => [...prev, { name:'', weight:10 }])}
+        style={{ ...btn('transparent', C.mute, '#ffffff20'), marginTop:4 }}>+ Thêm bước</button>
+      <div style={{ fontSize:11, color:C.mute, marginTop:8 }}>
+        Tổng trọng số đang dùng: <b style={{ color:C.text }}>{totalW}</b> · {live.length} bước
+      </div>
+      <div style={{ fontSize:10, color:'#ffffff50', marginTop:4, lineHeight:1.6 }}>
+        🙈 Ẩn bước mẫu: không hiện và không tính %, dữ liệu tick giữ lại, bấm ↩ để dùng lại.
+        ✕ Xoá bước riêng: xoá hẳn nếu chưa tick; đã tick thì chỉ ẩn.
+      </div>
+      <div style={{ display:'flex', gap:8, marginTop:14 }}>
+        <button disabled={busy} onClick={submit} style={btn('#375623', '#fff')}>{busy ? '⏳ Đang lưu...' : '✓ Lưu các bước'}</button>
         <button onClick={onClose} style={btn('transparent', C.mute, '#ffffff20')}>Huỷ</button>
       </div>
     </Modal>
