@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { itemPct, zonePct, totalPct, fp, statusOf, getProjectDates } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
-import { getItemsForProject, getSubItems, getZones, getProgress, getGanttDates, getQtyLogs, getSubItemsById } from '@/lib/queries'
+import { getItemsForProject, getSubItems, getZones, getProgress, getGanttDates, getQtyLogs, getSubItemsById, getProjectDependencies } from '@/lib/queries'
 import type { QtyLog } from '@/lib/queries'
 import { QtyReport, buildQtyRows } from '@/components/Qty'
+import OrderReport from '@/components/OrderReport'
+import { orderInfo } from '@/lib/order'
 
 const TABS = [
   { path:'/dashboard', icon:'ti-layout-dashboard', label:'Tổng quan' },
@@ -34,6 +36,7 @@ export default function ReportPage() {
   const [printMode,   setPrintMode]   = useState(false)
   const [qtyLogs,     setQtyLogs]     = useState<QtyLog[]>([])
   const [subById,     setSubById]     = useState<Record<string, any>>({})
+  const [deps,        setDeps]        = useState<any[]>([])
 
   useEffect(() => {
     const pid = new URLSearchParams(window.location.search).get('project') || ''
@@ -55,7 +58,8 @@ export default function ReportPage() {
       setGanttMap(gm)
       // Load sub_items
       const aItems = (it as any[]).filter((i:any) => i.group_type === 'A').map((i:any) => i.id)
-      setSubItems(await getSubItems(pid, aItems))
+      const [si, dp] = await Promise.all([getSubItems(pid, aItems), getProjectDependencies(pid, it as any[])])
+      setSubItems(si); setDeps(dp)
       // Tính tuần số từ ngày BD dự án (mục 24/26)
       const { weekNum: wn } = getProjectDates(it as any[], gm)
       setWeekNum(String(wn))
@@ -89,6 +93,8 @@ export default function ReportPage() {
     if (grp === 'A') {
       // Nhóm A - Vật tư
       if (pct >= 1) return { label:'✅ Đã có VT', color:'#4ade80' }
+      const ord = orderInfo(item, progressMap, ganttMap as any)
+      if (ord?.late) return { label: ord.lateDays === 0 ? '🔴 Hạn đặt hàng hôm nay' : `🔴 Trễ đặt hàng ${ord.lateDays}N`, color:'#ff8888' }
       if (pct === 0) {
         if (isLate) return { label:`🔴 Trễ ${lateN}N`, color:'#ff8888' }
         return { label: remain !== null ? `□ Chưa đặt · Còn ${remain}N` : '□ Chưa đặt', color:'#8899bb' }
@@ -462,6 +468,10 @@ export default function ReportPage() {
 
             {/* Khối lượng thi công: năng suất, dự báo ngày xong, cảnh báo trễ */}
             <QtyReport rows={buildQtyRows(items as any[], qtyLogs, ganttMap as any, subById)} light={printMode} />
+
+            {/* Đặt hàng vật tư: trễ kế hoạch + kế hoạch tuần tới */}
+            <OrderReport items={items as any[]} progressMap={progressMap as any} ganttMap={ganttMap as any}
+              subItems={subItems} deps={deps} weekLabel={getNextWeekItems().label} light={printMode} />
 
             {/* Vấn đề phát sinh */}
             <div style={{ marginBottom:12 }}>

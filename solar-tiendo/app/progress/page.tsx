@@ -7,6 +7,7 @@ import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
 import { getItemsForProject, getProjectDependencies, getSubItems, getZones, getProgress, getGanttDates, upsertProgress, upsertGantt, getQtyLogs } from '@/lib/queries'
 import type { QtyLog } from '@/lib/queries'
 import { QtyStepPanel, QtyConfig, isQtyStep, MatGroup } from '@/components/Qty'
+import { orderInfo, lateOrderLabel } from '@/lib/order'
 import { addDays, diffDays, fmtVN, earliestPlanStart, requiredArrival, cascadePlan, actualWarnings } from '@/lib/schedule'
 import type { Dep, PlanChange, StartReason } from '@/lib/schedule'
 
@@ -388,6 +389,8 @@ export default function ProgressPage() {
     const myDeps = dependencies.filter(d => d.item_id === item.id && byId[d.depends_on_item_id])
     const planEarliest = isA ? null : earliestPlanStart(item.id, dependencies, byId, ganttMap as any).date
     const warns = actualWarnings(item, dependencies, byId, ganttMap as any, isItemDone)
+    const ord = orderInfo(item, progressMap, ganttMap as any)
+    if (ord?.late) warns.unshift(`${lateOrderLabel(ord)} (Đặt hàng KH ${fmtVN(ord.planOrder)}) — chưa tick “${ord.orderStep?.name ?? 'đặt hàng'}”`)
     return (
       <div key={item.id} style={{ background:'#0d1b3e',
         border: `1px solid ${open ? z?.color ?? '#ffffff15' : '#ffffff10'}`,
