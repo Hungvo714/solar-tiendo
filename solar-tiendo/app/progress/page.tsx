@@ -8,6 +8,7 @@ import { getItemsForProject, getProjectDependencies, getSubItems, getZones, getP
 import type { QtyLog } from '@/lib/queries'
 import { QtyStepPanel, QtyConfig, isQtyStep, MatGroup } from '@/components/Qty'
 import { orderInfo, lateOrderLabel } from '@/lib/order'
+import MaterialsExcel from '@/components/MaterialsExcel'
 import { addDays, diffDays, fmtVN, earliestPlanStart, requiredArrival, cascadePlan, actualWarnings } from '@/lib/schedule'
 import type { Dep, PlanChange, StartReason } from '@/lib/schedule'
 
@@ -159,6 +160,14 @@ export default function ProgressPage() {
     const pr = await getProgress(projectId)
     setProgressMap(Object.fromEntries((pr as any[]).map(p => [p.step_id, p])))
     setSubItems(prev => ({ ...prev, [itemId]: (prev[itemId] ?? []).filter(s => s.id !== subId) }))
+  }
+
+  // Sau khi nhập Excel vật tư: tải lại danh sách vật tư + % (số lượng đổi → bước đo theo vật tư tính lại)
+  async function reloadMaterials() {
+    const aIds = items.filter((i: any) => i.group_type === 'A').map((i: any) => i.id)
+    const [si, pr] = await Promise.all([getSubItems(projectId, aIds), getProgress(projectId)])
+    setSubItems(si)
+    setProgressMap(Object.fromEntries((pr as any[]).map(p => [p.step_id, p])))
   }
 
   // ===================== KHỐI LƯỢNG =====================
@@ -932,9 +941,14 @@ export default function ProgressPage() {
           </div>
         </div>
 
-        {/* Nút Reset - chỉ Admin */}
+        {/* Thanh công cụ: Excel vật tư · Reset (chỉ Admin chính) */}
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', marginBottom:6 }}>
+          <MaterialsExcel projectId={projectId} projectName={project?.name ?? ''}
+            matItems={items.filter((i: any) => i.group_type === 'A')} subItems={subItems}
+            canEdit={!isViewer || isSuper} onApplied={reloadMaterials} />
+          <div style={{ flex:1 }} />
         {isSuper && (
-          <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:6 }}>
+          <div style={{ display:'flex', justifyContent:'flex-end' }}>
             <button onClick={resetAll}
               style={{ padding:'5px 12px', background:'transparent',
                 border:'1px solid #FF444440', borderRadius:8,
@@ -944,6 +958,7 @@ export default function ProgressPage() {
             </button>
           </div>
         )}
+        </div>
 
         {/* Items */}
         <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
