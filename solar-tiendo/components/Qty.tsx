@@ -47,45 +47,164 @@ export function Sparkline({ s, planStart, width = 160, height = 36 }:
   )
 }
 
-// ---------- Đặt / bỏ tổng khối lượng ----------
-export function QtyConfig({ projectId, step, onDone, onCancel }:
-  { projectId: string; step: any; onDone: () => void; onCancel: () => void }) {
+// ---------- Dòng khối lượng của 1 bước: 1 dòng (tự nhập tổng) hoặc mỗi vật tư 1 dòng ----------
+export type QtyLine = { key: string; subItemId: string | null; label: string | null; total: number; unit: string; logs: QtyLog[] }
+
+export const isQtyStep = (st: any) => st?.qty_total != null || (st?.qty_materials?.length ?? 0) > 0
+
+export function stepLines(step: any, logs: QtyLog[], subById: Record<string, any>): QtyLine[] {
+  const mine = logs.filter(l => l.step_id === step.id)
+  if ((step.qty_materials?.length ?? 0) > 0) {
+    return (step.qty_materials as string[]).map(id => subById[id]).filter(Boolean).map((sub: any) => ({
+      key: sub.id, subItemId: sub.id, label: sub.name,
+      total: Number(sub.quantity) || 0, unit: sub.unit ?? '',
+      logs: mine.filter(l => l.sub_item_id === sub.id),
+    }))
+  }
+  if (step.qty_total != null) return [{ key: step.id, subItemId: null, label: null,
+    total: Number(step.qty_total), unit: step.qty_unit ?? '', logs: mine.filter(l => !l.sub_item_id) }]
+  return []
+}
+
+// Vật tư có thể chọn: của các hạng mục vật tư mà hạng mục này đang chờ (điều kiện liên quan)
+export type MatGroup = { itemId: string; title: string; subs: any[] }
+
+// ---------- Cấu hình đo khối lượng: chọn vật tư hoặc tự nhập tổng ----------
+export function QtyConfig({ projectId, step, related, others, onDone, onCancel }: {
+  projectId: string; step: any; related: MatGroup[]; others: MatGroup[]
+  onDone: () => void; onCancel: () => void
+}) {
+  const hasMats = (step.qty_materials?.length ?? 0) > 0
+  const [mode, setMode] = useState<'mat' | 'manual'>(
+    hasMats ? 'mat' : step.qty_total != null ? 'manual' : related.some(g => g.subs.length) ? 'mat' : 'manual')
+  const [sel, setSel] = useState<Set<string>>(new Set(step.qty_materials ?? []))
+  const [showOthers, setShowOthers] = useState(
+    (step.qty_materials ?? []).some((id: string) => others.some(g => g.subs.some(x => x.id === id))))
   const [total, setTotal] = useState(step.qty_total != null ? String(step.qty_total) : '')
   const [unit, setUnit] = useState(step.qty_unit ?? 'tấm')
   const [busy, setBusy] = useState(false)
-  async function save(off = false) {
-    const n = off ? null : Number(String(total).replace(',', '.'))
-    if (!off && (!n || n <= 0)) { alert('Nhập tổng khối lượng > 0'); return }
-    if (off && !confirm('Bỏ đo theo khối lượng cho bước này?\nNhật ký đã nhập vẫn giữ lại; bước quay về tick ✓ như thường.')) return
+
+  const toggle = (id: string) => setSel(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const selectable = (g: MatGroup) => g.subs.filter(x => Number(x.quantity) > 0)
+  const allOf = (g: MatGroup) => {
+    const ids = selectable(g).map(x => x.id)
+    const on = ids.every(id => sel.has(id))
+    setSel(prev => { const n = new Set(prev); ids.forEach(id => on ? n.delete(id) : n.add(id)); return n })
+  }
+
+  async function saveMats() {
+    if (sel.size === 0) { alert('Chọn ít nhất 1 vật tư'); return }
     setBusy(true)
-    const { error } = await supabase.rpc('set_step_quantity', { pid: projectId, sid: step.id, p_total: n, p_unit: off ? null : unit })
+    const { error } = await supabase.rpc('set_step_materials', { pid: projectId, sid: step.id, p_subs: Array.from(sel) })
     setBusy(false)
     if (error) { alert('Lỗi: ' + error.message); return }
     onDone()
   }
-  return (
-    <div style={{ margin: '4px 0 6px 24px', padding: '8px 10px', borderRadius: 7, background: '#60a5fa12',
-      border: '1px solid #60a5fa40', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-      <span style={{ fontSize: 10, color: '#93b4f0' }}>📏 Tổng khối lượng:</span>
-      <input inputMode="decimal" value={total} onChange={e => setTotal(e.target.value)} placeholder="vd 3600"
-        style={{ ...inp, width: 90, fontFamily: 'monospace' }} />
-      <input list="qty-units" value={unit} onChange={e => setUnit(e.target.value)} style={{ ...inp, width: 70 }} />
-      <datalist id="qty-units">{UNITS.map(u => <option key={u} value={u} />)}</datalist>
-      <button disabled={busy} onClick={() => save()} style={btn('#1a3a1a', '#4ade80', '#4ade80')}>Lưu</button>
-      {step.qty_total != null && <button disabled={busy} onClick={() => save(true)} style={btn('#FF444418', '#FF444455', '#FF9999')}>Bỏ đo khối lượng</button>}
-      <button onClick={onCancel} style={btn('transparent', '#ffffff25', '#8899bb')}>Huỷ</button>
-      <div style={{ width: '100%', fontSize: 9, color: '#8899bb' }}>
-        Bước này sẽ tính % theo lũy kế ÷ tổng; đủ 100% tự đánh dấu xong. Ngày nhập đầu tiên tự điền “BD thực tế” nếu đang trống.
+  async function saveManual() {
+    const n = Number(String(total).replace(',', '.'))
+    if (!n || n <= 0) { alert('Nhập tổng khối lượng > 0'); return }
+    setBusy(true)
+    const { error } = await supabase.rpc('set_step_quantity', { pid: projectId, sid: step.id, p_total: n, p_unit: unit })
+    setBusy(false)
+    if (error) { alert('Lỗi: ' + error.message); return }
+    onDone()
+  }
+  async function turnOff() {
+    if (!confirm('Bỏ đo theo khối lượng cho bước này?\nNhật ký đã nhập vẫn giữ lại; bước quay về tick ✓ như thường.')) return
+    setBusy(true)
+    const { error } = await supabase.rpc('set_step_quantity', { pid: projectId, sid: step.id, p_total: null, p_unit: null })
+    setBusy(false)
+    if (error) { alert('Lỗi: ' + error.message); return }
+    onDone()
+  }
+
+  const tab = (m: 'mat' | 'manual', label: string) => (
+    <span onClick={() => setMode(m)} style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+      background: mode === m ? '#60a5fa30' : 'transparent', border: `1px solid ${mode === m ? '#60a5fa' : '#ffffff20'}`,
+      color: mode === m ? '#c0d8ff' : '#8899bb' }}>{label}</span>
+  )
+  const group = (g: MatGroup) => {
+    const ok = selectable(g)
+    return (
+      <div key={g.itemId} style={{ marginBottom: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10, color: '#c0d0ef', fontWeight: 600, marginBottom: 3 }}>
+          <span style={{ flex: 1 }}>{g.title}</span>
+          {ok.length > 1 && <span onClick={() => allOf(g)} style={{ fontSize: 9, color: '#60a5fa', cursor: 'pointer', fontWeight: 400 }}>
+            {ok.every(x => sel.has(x.id)) ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}</span>}
+        </div>
+        {g.subs.length === 0 && <div style={{ fontSize: 9.5, color: '#ffffff40', fontStyle: 'italic', paddingLeft: 4 }}>Chưa có vật tư trong danh sách</div>}
+        {g.subs.map(x => {
+          const has = Number(x.quantity) > 0
+          return (
+            <label key={x.id} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '3px 6px', borderRadius: 5,
+              fontSize: 10.5, color: has ? '#e8eaf0' : '#ffffff40', cursor: has ? 'pointer' : 'not-allowed',
+              background: sel.has(x.id) ? '#4ade8012' : 'transparent' }}>
+              <input type="checkbox" disabled={!has} checked={sel.has(x.id)} onChange={() => toggle(x.id)} />
+              <span style={{ flex: 1 }}>{x.name}</span>
+              <span style={{ fontFamily: has ? 'monospace' : 'inherit', fontSize: 10, fontStyle: has ? 'normal' : 'italic' }}>
+                {has ? `${fmtQty(Number(x.quantity))} ${x.unit ?? ''}` : 'chưa nhập số lượng'}
+              </span>
+            </label>
+          )
+        })}
       </div>
+    )
+  }
+
+  return (
+    <div style={{ margin: '4px 0 6px 24px', padding: '8px 10px', borderRadius: 7, background: '#60a5fa12', border: '1px solid #60a5fa40' }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+        <span style={{ fontSize: 10, color: '#93b4f0' }}>📏 Đo khối lượng:</span>
+        {tab('mat', '📦 Theo vật tư')}{tab('manual', '✍️ Tự nhập tổng')}
+      </div>
+
+      {mode === 'mat' ? (<>
+        {related.length === 0 && (
+          <div style={{ fontSize: 9.5, color: '#fbbf24', marginBottom: 6 }}>
+            Hạng mục này chưa có điều kiện chờ hạng mục vật tư nào. Có thể thêm ở ⚙️ Hạng mục → 🔗 Điều kiện, hoặc chọn trong vật tư khác bên dưới.
+          </div>
+        )}
+        {related.map(group)}
+        {others.length > 0 && (
+          <div style={{ marginTop: 4 }}>
+            <span onClick={() => setShowOthers((v: boolean) => !v)} style={{ fontSize: 9.5, color: '#60a5fa', cursor: 'pointer' }}>
+              {showOthers ? '▲ Ẩn' : '▼ Xem'} vật tư của các hạng mục vật tư khác
+            </span>
+            {showOthers && <div style={{ marginTop: 6, maxHeight: 260, overflowY: 'auto' }}>{others.map(group)}</div>}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+          <button disabled={busy} onClick={saveMats} style={btn('#1a3a1a', '#4ade80', '#4ade80')}>Lưu ({sel.size} vật tư)</button>
+          {isQtyStep(step) && <button disabled={busy} onClick={turnOff} style={btn('#FF444418', '#FF444455', '#FF9999')}>Bỏ đo khối lượng</button>}
+          <button onClick={onCancel} style={btn('transparent', '#ffffff25', '#8899bb')}>Huỷ</button>
+        </div>
+        <div style={{ fontSize: 9, color: '#8899bb', marginTop: 6 }}>
+          Mỗi vật tư nhập hằng ngày riêng; % bước = trung bình % các vật tư đã chọn. Tổng lấy theo số lượng ở danh sách vật tư (sửa ở đó là tự cập nhật).
+        </div>
+      </>) : (<>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 10, color: '#8899bb' }}>Tổng:</span>
+          <input inputMode="decimal" value={total} onChange={e => setTotal(e.target.value)} placeholder="vd 3600"
+            style={{ ...inp, width: 90, fontFamily: 'monospace' }} />
+          <input list="qty-units" value={unit} onChange={e => setUnit(e.target.value)} style={{ ...inp, width: 70 }} />
+          <datalist id="qty-units">{UNITS.map(u => <option key={u} value={u} />)}</datalist>
+          <button disabled={busy} onClick={saveManual} style={btn('#1a3a1a', '#4ade80', '#4ade80')}>Lưu</button>
+          {isQtyStep(step) && <button disabled={busy} onClick={turnOff} style={btn('#FF444418', '#FF444455', '#FF9999')}>Bỏ đo khối lượng</button>}
+          <button onClick={onCancel} style={btn('transparent', '#ffffff25', '#8899bb')}>Huỷ</button>
+        </div>
+        <div style={{ fontSize: 9, color: '#8899bb', marginTop: 6 }}>
+          Dùng khi không có vật tư tương ứng (lối đi, đường nước…). % = lũy kế ÷ tổng; đủ 100% tự đánh dấu xong.
+        </div>
+      </>)}
     </div>
   )
 }
 
-// ---------- Ô nhập hằng ngày + lịch sử (trang Tiến độ) ----------
-export function QtyStepPanel({ projectId, step, logs, planStart, planEnd, canEntry, canManageAll, userId, authors, onChanged }: {
-  projectId: string; step: any; logs: QtyLog[]; planStart?: string | null; planEnd?: string | null
+// ---------- 1 dòng khối lượng: tiến độ + ô nhập + lịch sử ----------
+function QtyLineView({ projectId, step, line, planStart, planEnd, canEntry, canManageAll, userId, authors, onChanged, compact }: {
+  projectId: string; step: any; line: QtyLine; planStart?: string | null; planEnd?: string | null
   canEntry: boolean; canManageAll: boolean; userId: string; authors: Record<string, string>
-  onChanged: () => Promise<void> | void
+  onChanged: () => Promise<void> | void; compact: boolean
 }) {
   const [qty, setQty] = useState('')
   const [date, setDate] = useState(todayVN())
@@ -93,9 +212,11 @@ export function QtyStepPanel({ projectId, step, logs, planStart, planEnd, canEnt
   const [busy, setBusy] = useState(false)
   const [showHist, setShowHist] = useState(false)
   const [edit, setEdit] = useState<{ id: string; qty: string; date: string; note: string } | null>(null)
-  const s = qtyStats(Number(step.qty_total), step.qty_unit, logs, planEnd)
+  const logs = line.logs
+  const s = qtyStats(line.total, line.unit, logs, planEnd)
   const stt = qtyStatus(s)
   const u = s.unit
+  const name = line.label ? `${step.name} · ${line.label}` : step.name
 
   async function add() {
     const n = Number(qty.replace(',', '.'))
@@ -105,13 +226,14 @@ export function QtyStepPanel({ projectId, step, logs, planStart, planEnd, canEnt
         !confirm(`Lũy kế sẽ thành ${fmtQty(s.done + n)}/${fmtQty(s.total)} ${u} — vượt tổng. Vẫn lưu?`)) return
     setBusy(true)
     const { error } = await supabase.from('step_qty_logs').insert({
-      project_id: projectId, step_id: step.id, log_date: date, qty: n, note: note.trim() || null, created_by: userId })
+      project_id: projectId, step_id: step.id, sub_item_id: line.subItemId,
+      log_date: date, qty: n, note: note.trim() || null, created_by: userId })
     setBusy(false)
     if (error) { alert('Lỗi lưu: ' + error.message); return }
     setQty(''); setNote('')
     const before = s.done
     await onChanged()
-    if (before < s.total && before + n >= s.total) alert(`✅ ${step.name}: đã đủ ${fmtQty(s.total)} ${u}.\nNhớ nhập “HT thực tế” cho hạng mục nếu toàn bộ đã xong.`)
+    if (before < s.total && before + n >= s.total) alert(`✅ ${name}: đã đủ ${fmtQty(s.total)} ${u}.`)
   }
   async function saveEdit() {
     if (!edit) return
@@ -132,14 +254,20 @@ export function QtyStepPanel({ projectId, step, logs, planStart, planEnd, canEnt
   const mine = (l: QtyLog) => canManageAll || (canEntry && l.created_by === userId)
   const hist = [...logs].sort((a, b) => b.log_date.localeCompare(a.log_date) || b.created_at.localeCompare(a.created_at))
 
+  if (line.total <= 0) return (
+    <div style={{ fontSize: 10, color: '#fbbf24', padding: '4px 0' }}>
+      {line.label ? <b>{line.label}: </b> : null}chưa có số lượng — nhập số lượng ở danh sách vật tư của hạng mục vật tư.
+    </div>
+  )
+
   return (
-    <div style={{ margin: '2px 0 6px 24px', padding: '8px 10px', borderRadius: 7, background: '#4ade800c', border: '1px solid #4ade8030' }}>
-      {/* Tiến độ khối lượng */}
+    <div style={{ padding: compact ? '6px 0' : 0, borderTop: compact ? '1px solid #ffffff10' : 'none' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 160 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
-            <span style={{ color: '#e8eaf0', fontFamily: 'monospace' }}>
-              <b style={{ color: '#4ade80' }}>{fmtQty(s.done)}</b> / {fmtQty(s.total)} {u}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3, gap: 8 }}>
+            <span style={{ color: '#e8eaf0' }}>
+              {line.label && <b style={{ color: '#c0d0ef', marginRight: 6 }}>📦 {line.label}</b>}
+              <span style={{ fontFamily: 'monospace' }}><b style={{ color: '#4ade80' }}>{fmtQty(s.done)}</b> / {fmtQty(s.total)} {u}</span>
             </span>
             <span style={{ fontFamily: 'monospace', color: '#4ade80', fontWeight: 700 }}>{(s.pct * 100).toFixed(1)}%</span>
           </div>
@@ -158,7 +286,6 @@ export function QtyStepPanel({ projectId, step, logs, planStart, planEnd, canEnt
         <Sparkline s={s} planStart={planStart} />
       </div>
 
-      {/* Nhập hôm nay */}
       {canEntry && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
           <input inputMode="decimal" value={qty} onChange={e => setQty(e.target.value)} placeholder={`+ số ${u || 'lượng'}`}
@@ -171,7 +298,6 @@ export function QtyStepPanel({ projectId, step, logs, planStart, planEnd, canEnt
         </div>
       )}
 
-      {/* Lịch sử */}
       <div style={{ marginTop: 6 }}>
         <span onClick={() => setShowHist(v => !v)} style={{ fontSize: 9.5, color: '#60a5fa', cursor: 'pointer' }}>
           {showHist ? '▲' : '▼'} Lịch sử nhập ({logs.length}){s.today ? ` · hôm nay +${fmtQty(s.today)} ${u}` : ''}
@@ -209,21 +335,51 @@ export function QtyStepPanel({ projectId, step, logs, planStart, planEnd, canEnt
   )
 }
 
+// ---------- Khối lượng của 1 bước (trang Tiến độ) ----------
+export function QtyStepPanel({ projectId, step, logs, subById, planStart, planEnd, canEntry, canManageAll, userId, authors, onChanged }: {
+  projectId: string; step: any; logs: QtyLog[]; subById: Record<string, any>; planStart?: string | null; planEnd?: string | null
+  canEntry: boolean; canManageAll: boolean; userId: string; authors: Record<string, string>
+  onChanged: () => Promise<void> | void
+}) {
+  const lines = stepLines(step, logs, subById)
+  const multi = lines.length > 1
+  const valid = lines.filter(l => l.total > 0)
+  const avg = valid.length ? valid.reduce((a, l) => a + Math.min(1, Math.max(0, l.logs.reduce((x, y) => x + Number(y.qty), 0) / l.total)), 0) / valid.length : 0
+  return (
+    <div style={{ margin: '2px 0 6px 24px', padding: '8px 10px', borderRadius: 7, background: '#4ade800c', border: '1px solid #4ade8030' }}>
+      {multi && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#c0d0ef', marginBottom: 4 }}>
+          <span>Theo {lines.length} vật tư — % bước = trung bình</span>
+          <b style={{ color: '#4ade80', fontFamily: 'monospace' }}>{(avg * 100).toFixed(1)}%</b>
+        </div>
+      )}
+      {lines.length === 0 && <div style={{ fontSize: 10, color: '#fbbf24' }}>Vật tư đã chọn không còn trong danh sách — bấm 📏 để chọn lại.</div>}
+      {lines.map(line => (
+        <QtyLineView key={line.key} projectId={projectId} step={step} line={line} planStart={planStart} planEnd={planEnd}
+          canEntry={canEntry} canManageAll={canManageAll} userId={userId} authors={authors} onChanged={onChanged} compact={multi} />
+      ))}
+    </div>
+  )
+}
+
 // ---------- Bảng báo cáo khối lượng (Tổng quan / Báo cáo) ----------
-export type QtyRow = { item: any; step: any; s: QtyStats; planStart: string | null }
+export type QtyRow = { key: string; item: any; step: any; label: string | null; s: QtyStats; planStart: string | null }
 
 // Chỉ lấy bước ĐANG THI CÔNG: đã có khối lượng nhập
 // và chưa xong (còn khối lượng, hạng mục chưa có HT thực tế). Chưa làm / đã xong → không hiện.
-export function buildQtyRows(items: any[], logs: QtyLog[], ganttMap: Record<string, any>): QtyRow[] {
+export function buildQtyRows(items: any[], logs: QtyLog[], ganttMap: Record<string, any>, subById: Record<string, any> = {}): QtyRow[] {
   const rows: QtyRow[] = []
   for (const it of items) for (const st of it.steps ?? []) {
-    if (st.qty_total == null) continue
+    if (!isQtyStep(st)) continue
     const g = ganttMap[it.id] ?? {}
-    const s = qtyStats(Number(st.qty_total), st.qty_unit, logs.filter(l => l.step_id === st.id), g.plan_end ?? null)
-    const started = !!s.firstDate && s.done > 0          // đã có khối lượng nhập thực tế
-    const finished = s.remaining <= 0 || !!g.actual_end
-    if (!started || finished) continue
-    rows.push({ item: it, step: st, planStart: g.plan_start ?? null, s })
+    for (const line of stepLines(st, logs, subById)) {
+      if (line.total <= 0) continue
+      const s = qtyStats(line.total, line.unit, line.logs, g.plan_end ?? null)
+      const started = !!s.firstDate && s.done > 0          // đã có khối lượng nhập thực tế
+      const finished = s.remaining <= 0 || !!g.actual_end
+      if (!started || finished) continue
+      rows.push({ key: st.id + ':' + line.key, item: it, step: st, label: line.label, planStart: g.plan_start ?? null, s })
+    }
   }
   return rows
 }
@@ -241,7 +397,7 @@ export function QtyReport({ rows, light = false, title = '📏 Khối lượng �
     <div style={{ marginBottom: 14 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: light ? '#1F3864' : '#c0d0ef', marginBottom: 6 }}>
         {title}
-        {late.length > 0 && <span style={{ marginLeft: 8, fontSize: 10, color: c.bad, fontWeight: 600 }}>🔴 {late.length} bước có nguy cơ trễ</span>}
+        {late.length > 0 && <span style={{ marginLeft: 8, fontSize: 10, color: c.bad, fontWeight: 600 }}>🔴 {late.length} mục có nguy cơ trễ</span>}
       </div>
       <div style={{ overflowX: 'auto', border: `1px solid ${c.bd}`, borderRadius: 8, background: c.bg }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
@@ -253,13 +409,13 @@ export function QtyReport({ rows, light = false, title = '📏 Khối lượng �
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ item, step, s, planStart }, i) => {
+            {rows.map(({ key, item, step, label, s, planStart }, i) => {
               const stt = qtyStatus(s)
               return (
-                <tr key={step.id} style={{ background: i % 2 ? c.alt : 'transparent' }}>
+                <tr key={key} style={{ background: i % 2 ? c.alt : 'transparent' }}>
                   <td style={td}>
                     <div style={{ fontWeight: 600 }}>#{item.no ?? item.stt} {item.name}</div>
-                    <div style={{ fontSize: 9.5, color: c.sub }}>{step.name}</div>
+                    <div style={{ fontSize: 9.5, color: c.sub }}>{step.name}{label ? <b> · {label}</b> : null}</div>
                   </td>
                   <td style={{ ...td, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{fmtQty(s.done)} / {fmtQty(s.total)} {s.unit}</td>
                   <td style={{ ...td, fontFamily: 'monospace', fontWeight: 700 }}>{(s.pct * 100).toFixed(1)}%</td>

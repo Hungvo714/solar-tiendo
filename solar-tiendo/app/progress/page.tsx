@@ -6,7 +6,7 @@ import { itemPct, fp, statusOf } from '@/lib/calc'
 import type { Item, Progress, Zone, GanttDate, Project } from '@/lib/supabase'
 import { getItemsForProject, getProjectDependencies, getSubItems, getZones, getProgress, getGanttDates, upsertProgress, upsertGantt, getQtyLogs } from '@/lib/queries'
 import type { QtyLog } from '@/lib/queries'
-import { QtyStepPanel, QtyConfig } from '@/components/Qty'
+import { QtyStepPanel, QtyConfig, isQtyStep, MatGroup } from '@/components/Qty'
 import { addDays, diffDays, fmtVN, earliestPlanStart, requiredArrival, cascadePlan, actualWarnings } from '@/lib/schedule'
 import type { Dep, PlanChange, StartReason } from '@/lib/schedule'
 
@@ -141,11 +141,22 @@ export default function ProgressPage() {
       .eq('item_id', itemId).eq('project_id', projectId).order('sort_order')
     setSubItems(prev => ({ ...prev, [itemId]: data ?? [] }))
     setEditSubItem(null)
+    // Số lượng vật tư đổi → % các bước đo theo vật tư đã được tính lại trên máy chủ
+    const pr = await getProgress(projectId)
+    setProgressMap(Object.fromEntries((pr as any[]).map(p => [p.step_id, p])))
   }
 
   async function deleteSubItem(itemId: string, subId: string) {
-    if (!confirm('Xoá vật tư phụ này?')) return
-    await supabase.from('sub_items').delete().eq('id', subId).eq('project_id', projectId)
+    if (!confirm('Xoá vật tư này khỏi danh sách?')) return
+    const { error } = await supabase.from('sub_items').delete().eq('id', subId).eq('project_id', projectId)
+    if (error) {
+      alert(error.code === '23503'
+        ? 'Không xoá được: vật tư này đã có khối lượng thi công nhập hằng ngày. Xoá các dòng nhập đó trước (hoặc giữ lại vật tư).'
+        : 'Lỗi: ' + error.message)
+      return
+    }
+    const pr = await getProgress(projectId)
+    setProgressMap(Object.fromEntries((pr as any[]).map(p => [p.step_id, p])))
     setSubItems(prev => ({ ...prev, [itemId]: (prev[itemId] ?? []).filter(s => s.id !== subId) }))
   }
 
@@ -175,6 +186,18 @@ export default function ProgressPage() {
 
   // ===================== LIÊN KẾT NGÀY (quy tắc: lib/schedule.ts) =====================
   const byId: Record<string, any> = Object.fromEntries(items.map((i: any) => [i.id, i]))
+  // Danh sách vật tư theo id + nhóm vật tư để chọn khi đo khối lượng
+  const subById: Record<string, any> = Object.fromEntries(Object.values(subItems).flat().map((x: any) => [x.id, x]))
+  const matGroup = (it: any): MatGroup => ({ itemId: it.id, title: `#${it.no ?? it.stt} ${it.name}`, subs: subItems[it.id] ?? [] })
+  function materialGroups(item: any) {
+    const relIds = new Set(dependencies.filter(d => d.item_id === item.id)
+      .map(d => d.depends_on_item_id).filter(id => byId[id]?.group_type === 'A'))
+    const mats = items.filter((i: any) => i.group_type === 'A')
+    return {
+      related: mats.filter((i: any) => relIds.has(i.id)).map(matGroup),
+      others:  mats.filter((i: any) => !relIds.has(i.id) && (subItems[i.id] ?? []).length > 0).map(matGroup),
+    }
+  }
   const isItemDone = (id: string) => { const it = byId[id]; return !!it && itemPct(it, progressMap) >= 1 }
   const depLabel = (it: any) => `#${it?.no ?? it?.stt} ${it?.name ?? ''}`
   const todayStr = () => new Date().toLocaleDateString('en-CA')
@@ -558,7 +581,7 @@ export default function ProgressPage() {
                 const p    = progressMap[step.id]
                 const done = !!p?.is_done
                 const na   = !!p?.is_na
-                const isQty = step.qty_total != null
+                const isQty = isQtyStep(step)
                 const lock = isViewer || isQty               // bước đo khối lượng: tự tick theo lũy kế
                 return (
                   <div key={step.id}>
@@ -604,11 +627,11 @@ export default function ProgressPage() {
                     </div>
                   </div>
                   {qtyCfg === step.id && (
-                    <QtyConfig projectId={projectId} step={step}
+                    <QtyConfig projectId={projectId} step={step} {...materialGroups(item)}
                       onDone={() => reloadItems(item)} onCancel={() => setQtyCfg(null)} />
                   )}
                   {isQty && qtyCfg !== step.id && (
-                    <QtyStepPanel projectId={projectId} step={step}
+                    <QtyStepPanel projectId={projectId} step={step} subById={subById}
                       logs={qtyLogs.filter(l => l.step_id === step.id)}
                       planStart={(ganttMap[item.id] as any)?.plan_start} planEnd={(ganttMap[item.id] as any)?.plan_end}
                       canEntry={canQtyEntry} canManageAll={canQtyConfig} userId={userId} authors={authors}
@@ -624,7 +647,7 @@ export default function ProgressPage() {
               <div style={{ marginTop:10 }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
                   marginBottom:6, paddingTop:8, borderTop:'1px solid #ffffff10' }}>
-                  <span style={{ fontSize:10, fontWeight:600, color:'#c0d0ef' }}>📦 Vật tư phụ</span>
+                  <span style={{ fontSize:10, fontWeight:600, color:'#c0d0ef' }}>📦 Danh sách vật tư</span>
                   {!isViewer && (
                     <button onClick={() => setEditSubItem({ itemId: item.id })}
                       style={{ fontSize:9, padding:'2px 8px', borderRadius:6, cursor:'pointer',
@@ -633,7 +656,7 @@ export default function ProgressPage() {
                   )}
                 </div>
                 {(subItems[item.id] ?? []).length === 0 ? (
-                  <div style={{ fontSize:10, color:'#ffffff30', fontStyle:'italic' }}>Chưa có vật tư phụ</div>
+                  <div style={{ fontSize:10, color:'#ffffff30', fontStyle:'italic' }}>Chưa có vật tư — thêm vật tư chính (vd Tấm pin 3.600 tấm) và vật tư phụ</div>
                 ) : (
                   <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
                     {(subItems[item.id] ?? []).map((sub: any) => {
@@ -779,10 +802,10 @@ export default function ProgressPage() {
         <div style={{ background:'#0d1b3e', border:'1px solid #4472C4',
           borderRadius:14, padding:20, width:320, maxWidth:'90vw' }}>
           <div style={{ fontSize:13, fontWeight:700, color:'#e8eaf0', marginBottom:14 }}>
-            {editSubItem.sub ? '✏️ Sửa vật tư phụ' : '➕ Thêm vật tư phụ'}
+            {editSubItem.sub ? '✏️ Sửa vật tư' : '➕ Thêm vật tư'}
           </div>
           {[
-            ['Tên vật tư *', name, setName, 'text', 'VD: Bu lông M10'],
+            ['Tên vật tư *', name, setName, 'text', 'VD: Tấm pin, Rail, Bu lông M10'],
             ['Đơn vị tính', unit, setUnit, 'text', 'VD: cái, kg, m...'],
             ['Số lượng', quantity, setQty, 'number', '0'],
             ['Ghi chú', note, setNote, 'text', ''],

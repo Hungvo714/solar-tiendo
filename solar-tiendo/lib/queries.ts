@@ -28,7 +28,8 @@ export function numberItems<T extends { hidden?: boolean }>(items: T[]): (T & { 
 }
 // Áp cấu hình BƯỚC của dự án (project_step_settings): tên, trọng số, ẩn, thứ tự;
 // chỉ giữ bước mẫu + bước thêm riêng của đúng dự án này.
-function applySteps(it: any, projectId: string, ov: Record<string, any>, includeHiddenSteps: boolean) {
+function applySteps(it: any, projectId: string, ov: Record<string, any>, includeHiddenSteps: boolean,
+                    mats: Record<string, string[]> = {}) {
   const steps = (it.steps ?? [])
     .filter((s: any) => s.project_id == null || s.project_id === projectId)
     .map((s: any) => {
@@ -43,6 +44,7 @@ function applySteps(it: any, projectId: string, ov: Record<string, any>, include
         is_extra: s.project_id === projectId,         // bước thêm riêng cho dự án
         qty_total: o?.qty_total != null ? Number(o.qty_total) : null,   // đo theo khối lượng
         qty_unit:  o?.qty_unit ?? null,
+        qty_materials: mats[s.id] ?? [],                // đo theo vật tư: id các vật tư (sub_items) đã chọn
       }
     })
     .sort((a: any, b: any) => a._sort - b._sort || (a.step_index ?? 0) - (b.step_index ?? 0))
@@ -54,11 +56,14 @@ function applySteps(it: any, projectId: string, ov: Record<string, any>, include
 // BỎ các mục bị ẩn (trừ khi includeHidden — dùng cho trang cấu hình, có cờ hidden)
 export async function getItemsForProject(projectId: string,
   opts: { includeHidden?: boolean; includeHiddenSteps?: boolean } = {}) {
-  const [items, { data: settings }, { data: stepSet }] = await Promise.all([
+  const [items, { data: settings }, { data: stepSet }, { data: matRows }] = await Promise.all([
     getItemsWithSteps(),
     supabase.from('project_item_settings').select('item_id, order_days, hidden').eq('project_id', projectId),
     supabase.from('project_step_settings').select('step_id, name, weight, hidden, sort, qty_total, qty_unit').eq('project_id', projectId),
+    supabase.from('step_qty_materials').select('step_id, sub_item_id').eq('project_id', projectId),
   ])
+  const mats: Record<string, string[]> = {}
+  for (const m of (matRows ?? []) as any[]) (mats[m.step_id] ??= []).push(m.sub_item_id)
   const st: Record<string, { order_days: number; hidden: boolean }> = {}
   for (const s of settings ?? []) st[(s as any).item_id] = s as any
   const ov: Record<string, any> = {}
@@ -66,7 +71,7 @@ export async function getItemsForProject(projectId: string,
   const list = (items as any[])
     .filter(it => it.project_id == null || it.project_id === projectId)
     .map(it => ({
-      ...applySteps(it, projectId, ov, !!opts.includeHiddenSteps),
+      ...applySteps(it, projectId, ov, !!opts.includeHiddenSteps, mats),
       order_days: st[it.id]?.order_days ?? it.order_days,
       hidden: !!st[it.id]?.hidden,
     }))
@@ -93,11 +98,19 @@ export async function getProjectDependencies(projectId: string, items: any[]) {
 }
 
 // Nhật ký khối lượng hằng ngày của dự án (bước đo theo khối lượng)
-export type QtyLog = { id: string; project_id: string; step_id: string; log_date: string; qty: number; note: string | null; created_by: string | null; created_at: string }
+export type QtyLog = { id: string; project_id: string; step_id: string; sub_item_id?: string | null; log_date: string; qty: number; note: string | null; created_by: string | null; created_at: string }
 export async function getQtyLogs(projectId: string): Promise<QtyLog[]> {
   const { data } = await supabase.from('step_qty_logs').select('*')
     .eq('project_id', projectId).order('log_date').order('created_at')
   return (data ?? []).map((l: any) => ({ ...l, qty: Number(l.qty) }))
+}
+
+// Toàn bộ danh sách vật tư của dự án, theo id (dùng cho bước đo theo vật tư)
+export async function getSubItemsById(projectId: string) {
+  const { data } = await supabase.from('sub_items').select('*').eq('project_id', projectId)
+  const map: Record<string, any> = {}
+  for (const s of data ?? []) map[(s as any).id] = s
+  return map
 }
 
 // Vật tư phụ (hạng mục con) RIÊNG của dự án
