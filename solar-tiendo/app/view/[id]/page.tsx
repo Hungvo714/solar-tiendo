@@ -14,17 +14,27 @@ export default function PublicViewPage() {
   const [ganttMap,    setGanttMap]    = useState<Record<string, GanttDate>>({})
   const [loading,     setLoading]     = useState(true)
   const [notFound,    setNotFound]    = useState(false)
+  const [netError,    setNetError]    = useState(false)
 
   useEffect(() => {
     const parts = window.location.pathname.split('/')
     const token = decodeURIComponent(parts[parts.length - 1] || '')
     if (!token || token === 'view') { setNotFound(true); setLoading(false); return }
     async function load() {
-      // Chỉ lấy đúng 1 dự án theo mã chia sẻ (hàm get_shared_project phía máy chủ)
-      const [{ data: shared }, z] = await Promise.all([
-        supabase.rpc('get_shared_project', { p_token: token }),
-        getZones(),
-      ])
+      // Chỉ lấy đúng 1 dự án theo mã chia sẻ (hàm get_shared_project phía máy chủ).
+      // Mạng điện thoại chập chờn → thử lại tối đa 3 lần; lỗi mạng KHÁC với "không tìm thấy".
+      let shared: any = null, z: any[] = [], failed = true
+      for (let i = 0; i < 3; i++) {
+        try {
+          const [res, zz] = await Promise.all([
+            supabase.rpc('get_shared_project', { p_token: token }),
+            getZones().catch(() => []),
+          ])
+          if (!res.error) { shared = res.data; z = zz as any[]; failed = false; break }
+        } catch {}
+        await new Promise(r => setTimeout(r, 800 * (i + 1)))
+      }
+      if (failed) { setNetError(true); setLoading(false); return }
       // Hạng mục đã áp cấu hình của dự án (ẩn mục không dùng, có mục thêm riêng)
       const it = numberItems(((shared as any)?.items ?? []) as any[])
       const proj = (shared as any)?.project
@@ -47,6 +57,17 @@ export default function PublicViewPage() {
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
       height:'100vh', background:'#0a0f1e', color:'#8899bb', flexDirection:'column', gap:12 }}>
       <div style={{ fontSize:40 }}>☀️</div><div>Đang tải...</div>
+    </div>
+  )
+
+  if (netError) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', textAlign:'center', padding:20,
+      height:'100vh', background:'#0a0f1e', color:'#8899bb', flexDirection:'column', gap:12 }}>
+      <div style={{ fontSize:40 }}>📶</div>
+      <div style={{ fontSize:16, fontWeight:600, color:'#e8eaf0' }}>Lỗi kết nối</div>
+      <div style={{ fontSize:12 }}>Không tải được dữ liệu, có thể do mạng yếu. Kiểm tra mạng rồi thử lại.</div>
+      <button onClick={() => window.location.reload()} style={{ marginTop:6, padding:'10px 20px', borderRadius:10, border:'none',
+        background:'#F5A623', color:'#0d1b3e', fontWeight:700, fontSize:13, cursor:'pointer' }}>🔄 Thử lại</button>
     </div>
   )
 
