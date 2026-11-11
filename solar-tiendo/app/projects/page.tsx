@@ -2,6 +2,8 @@
 import BrandLogo from '@/components/BrandLogo'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import PlanPreview from '@/components/PlanPreview'
+import { loadSourcePlan, computePlan, hasPlan, SourcePlan, PlanResult, PlanMode } from '@/lib/planCopy'
 
 type Project = {
   id: string; name: string; client: string; contractor: string
@@ -15,6 +17,13 @@ export default function ProjectsPage() {
   const [creating,  setCreating]  = useState(false)
   const [showForm,  setShowForm]  = useState(false)
   const [copyFrom,  setCopyFrom]  = useState('')     // sao chép cấu hình từ dự án (tuỳ chọn)
+  const [copyItems, setCopyItems] = useState(true)   // hạng mục & khối lượng vật tư
+  const [copyPlan,  setCopyPlan]  = useState(false)  // kế hoạch thi công
+  const [planMode,  setPlanMode]  = useState<PlanMode>('shift')
+  const [planEnd,   setPlanEnd]   = useState('')
+  const [srcPlan,   setSrcPlan]   = useState<SourcePlan | null>(null)
+  const [srcLoading, setSrcLoading] = useState(false)
+  const [preview,   setPreview]   = useState<PlanResult | null>(null)
   const [deleting,  setDeleting]  = useState<string|null>(null)
   const [copied,    setCopied]    = useState<string|null>(null)
   const [showMembers, setShowMembers] = useState<string|null>(null)
@@ -87,27 +96,58 @@ export default function ProjectsPage() {
     }
   }
 
+  const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })
+  const resetForm = () => {
+    setShowForm(false); setCopyFrom(''); setCopyItems(true); setCopyPlan(false); setPlanMode('shift')
+    setPlanEnd(''); setSrcPlan(null); setPreview(null)
+    setForm({ name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60', location:'' })
+  }
+  // Chọn dự án nguồn → tải kế hoạch nguồn (để tính ngày hoàn thành dự kiến / xem trước)
+  async function pickSource(id: string) {
+    setCopyFrom(id); setSrcPlan(null)
+    if (!id) return
+    setSrcLoading(true)
+    try { setSrcPlan(await loadSourcePlan(id)) } catch { setSrcPlan(null) }
+    setSrcLoading(false)
+  }
+  const planStart = form.start_date || todayStr()
+  const wantPlan = !!copyFrom && copyItems && copyPlan
+  function buildPlan(): PlanResult | null {
+    if (!srcPlan) return null
+    return computePlan(srcPlan, planMode, planStart, planMode === 'scale' ? planEnd : null)
+  }
+
   async function createProject() {
     if (!form.name) return
+    if (wantPlan) {
+      if (srcLoading || !srcPlan) { alert('Đang tải kế hoạch dự án nguồn, thử lại sau giây lát.'); return }
+      if (planMode === 'scale' && (!planEnd || planEnd <= planStart)) { alert('Chọn ngày hoàn thành sau ngày bắt đầu.'); return }
+      setPreview(buildPlan()); return          // xem trước rồi mới tạo
+    }
+    await doCreate(null)
+  }
+
+  async function doCreate(plan: PlanResult | null) {
     setCreating(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      if (copyFrom) {
-        // Tạo dự án mới + sao chép cấu hình (hạng mục, bước, điều kiện, vật tư, số lượng) trong 1 lần
+      if (copyFrom && copyItems) {
+        // Tạo dự án mới + sao chép cấu hình (và kế hoạch nếu chọn) trong 1 lần
         const { error } = await supabase.rpc('create_project_copy', {
           p_src: copyFrom, p_name: form.name, p_client: form.client, p_contractor: form.contractor,
-          p_start: form.start_date || null, p_total_days: parseInt(form.total_days) || 60, p_location: form.location || null,
+          p_start: plan?.start ?? planStart,
+          p_total_days: plan?.totalDays ?? (parseInt(form.total_days) || 60),
+          p_location: form.location || null,
+          p_plan: plan ? { items: plan.items, subs: plan.subs } : null,
         })
         if (error) { alert('Lỗi: ' + error.message); return }
-        setShowForm(false); setCopyFrom('')
-        setForm({ name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60', location:'' })
-        loadProjects()
+        resetForm(); loadProjects()
         return
       }
       const { data: proj, error } = await supabase.from('projects').insert({
         name: form.name, client: form.client, contractor: form.contractor,
-        start_date: form.start_date || new Date().toISOString().split('T')[0],
+        start_date: planStart,
         total_days: parseInt(form.total_days) || 60,
         location: form.location || null,
       }).select().single()
@@ -115,9 +155,7 @@ export default function ProjectsPage() {
       await supabase.from('project_members').insert({
         project_id: proj.id, user_id: user.id, role: 'admin'
       })
-      setShowForm(false)
-      setForm({ name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60', location:'' })
-      loadProjects()
+      resetForm(); loadProjects()
     } finally {
       setCreating(false)
     }
@@ -447,33 +485,106 @@ export default function ProjectsPage() {
                     </div>
                   ))}
                 </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+                  <div>
+                    <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:4 }}>Ngày bắt đầu</label>
+                    <input type="date" value={planStart} onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))}
+                      style={{ ...S.inp, colorScheme:'dark' as any }}/>
+                  </div>
+                  {!wantPlan && (
+                    <div>
+                      <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:4 }}>Tổng số ngày thi công</label>
+                      <input type="number" min={1} value={form.total_days} onChange={e => setForm(p => ({ ...p, total_days: e.target.value }))} style={S.inp}/>
+                    </div>
+                  )}
+                </div>
                 <div style={{ marginBottom:14 }}>
                   <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:4 }}>
-                    📋 Sao chép cấu hình từ dự án có sẵn (tuỳ chọn)
+                    📋 Sao chép từ dự án có sẵn (tuỳ chọn)
                   </label>
-                  <select value={copyFrom} onChange={e => setCopyFrom(e.target.value)} style={{ ...S.inp, cursor:'pointer' }}>
+                  <select value={copyFrom} onChange={e => pickSource(e.target.value)} style={{ ...S.inp, cursor:'pointer' }}>
                     <option value="">— Không, dùng mẫu chuẩn —</option>
                     {projects.filter((p: any) => p.role === 'admin' || isSuper).map((p: any) => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>
                   {copyFrom && (
-                    <div style={{ fontSize:9.5, color:'#8899bb', marginTop:6, lineHeight:1.6 }}>
-                      ✅ Copy: hạng mục (ẩn / thêm riêng / thứ tự), các bước & trọng số, điều kiện liên quan,
-                      số ngày gia công, danh sách vật tư & số lượng, cấu hình đo khối lượng.<br/>
-                      ❌ Không copy: ngày kế hoạch / thực tế, ngày cần vật tư, tick hoàn thành, khối lượng đã nhập,
-                      báo cáo, thành viên (Admin chính luôn là Admin của dự án).
+                    <div style={{ marginTop:8, padding:'10px 12px', borderRadius:8, background:'#ffffff06', border:'1px solid #ffffff12' }}>
+                      <label style={{ display:'flex', gap:8, alignItems:'flex-start', fontSize:11.5, cursor:'pointer' }}>
+                        <input type="checkbox" checked={copyItems}
+                          onChange={e => { setCopyItems(e.target.checked); if (!e.target.checked) setCopyPlan(false) }} />
+                        <span><b>Hạng mục & khối lượng vật tư</b>
+                          <div style={{ fontSize:9.5, color:'#8899bb', marginTop:2 }}>Hạng mục ẩn / thêm riêng / thứ tự, các bước & trọng số, điều kiện liên quan, số ngày gia công, danh sách vật tư & số lượng, cấu hình đo khối lượng</div>
+                        </span>
+                      </label>
+                      <label style={{ display:'flex', gap:8, alignItems:'flex-start', fontSize:11.5, cursor: copyItems ? 'pointer' : 'not-allowed', marginTop:8, opacity: copyItems ? 1 : 0.45 }}>
+                        <input type="checkbox" checked={copyPlan} disabled={!copyItems} onChange={e => setCopyPlan(e.target.checked)} />
+                        <span><b>Kế hoạch thi công</b>
+                          <div style={{ fontSize:9.5, color:'#8899bb', marginTop:2 }}>Ngày BD/HT kế hoạch, Đặt hàng / Có hàng (KH) của vật tư, ngày cần vật tư{!copyItems && ' — cần chọn “Hạng mục & khối lượng vật tư”'}</div>
+                        </span>
+                      </label>
+
+                      {wantPlan && (
+                        <div style={{ marginTop:10, marginLeft:22, display:'flex', flexDirection:'column', gap:8 }}>
+                          {srcLoading && <div style={{ fontSize:10, color:'#8899bb' }}>⏳ Đang tải kế hoạch dự án nguồn…</div>}
+                          {!srcLoading && srcPlan && !hasPlan(srcPlan) && (
+                            <div style={{ fontSize:10, color:'#fbbf24' }}>⚠️ Dự án nguồn chưa có ngày kế hoạch nào — sẽ không có gì để sao chép.</div>
+                          )}
+                          {([
+                            ['shift', 'Chỉ chọn ngày bắt đầu', 'Dời toàn bộ lịch theo ngày bắt đầu ở trên, ngày hoàn thành tự tính'],
+                            ['scale', 'Chọn ngày bắt đầu + ngày hoàn thành mới', 'Hệ thống co / giãn lịch và đề xuất ngày từng hạng mục'],
+                            ['keep',  'Giữ nguyên ngày như dự án nguồn', 'Dùng khi lập nhiều phương án cho cùng dự án'],
+                          ] as [PlanMode, string, string][]).map(([m, t, d]) => {
+                            const est = m === 'shift' && planMode === 'shift' && srcPlan ? computePlan(srcPlan, 'shift', planStart).end : null
+                            return (
+                              <label key={m} style={{ display:'flex', gap:8, alignItems:'flex-start', fontSize:11, cursor:'pointer' }}>
+                                <input type="radio" name="planMode" checked={planMode === m} onChange={() => setPlanMode(m)} />
+                                <span style={{ flex:1 }}>{t}
+                                  <div style={{ fontSize:9.5, color:'#8899bb' }}>{d}</div>
+                                  {m === 'shift' && planMode === 'shift' && est && (
+                                    <div style={{ fontSize:10, color:'#4ade80', marginTop:2 }}>→ Hoàn thành dự kiến {est.split('-').reverse().join('/')}</div>
+                                  )}
+                                  {m === 'scale' && planMode === 'scale' && (
+                                    <div style={{ display:'flex', gap:6, alignItems:'center', marginTop:4, flexWrap:'wrap' }}>
+                                      <span style={{ fontSize:10, color:'#8899bb' }}>Hoàn thành</span>
+                                      <input type="date" value={planEnd} min={planStart} onChange={e => setPlanEnd(e.target.value)}
+                                        style={{ ...S.inp, width:160, padding:'5px 8px', colorScheme:'dark' as any }} />
+                                      {srcPlan?.anchor && srcPlan?.srcEnd && (
+                                        <span style={{ fontSize:9.5, color:'#8899bb' }}>
+                                          (nguồn: {Math.round((new Date(srcPlan.srcEnd).getTime() - new Date(srcPlan.anchor).getTime()) / 86400000) + 1} ngày)
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                  {m === 'keep' && planMode === 'keep' && srcPlan?.anchor && (
+                                    <div style={{ fontSize:10, color:'#fbbf24', marginTop:2 }}>Ngày bắt đầu sẽ theo dự án nguồn ({srcPlan.anchor.split('-').reverse().join('/')}); ngày đã qua sẽ bị báo trễ.</div>
+                                  )}
+                                </span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      )}
+                      <div style={{ fontSize:9.5, color:'#8899bb', marginTop:10 }}>
+                        ❌ Không bao giờ copy: ngày thực tế, tick hoàn thành, khối lượng đã nhập, báo cáo, thành viên (Admin chính luôn là Admin của dự án).
+                      </div>
                     </div>
                   )}
                 </div>
                 <div style={{ display:'flex', gap:8 }}>
                   <button onClick={createProject} disabled={!form.name || creating}
                     style={{ ...S.btn(form.name?'#F5A623':'#444', form.name?'#0d1b3e':'#888'), flex:1, padding:'10px' }}>
-                    {creating ? '⏳ Đang tạo...' : '✓ Tạo dự án'}
+                    {creating ? '⏳ Đang tạo...' : wantPlan ? '📅 Xem trước kế hoạch & tạo' : '✓ Tạo dự án'}
                   </button>
-                  <button onClick={() => { setShowForm(false); setCopyFrom('') }} style={S.btn('transparent','#8899bb','#ffffff20')}>Huỷ</button>
+                  <button onClick={resetForm} style={S.btn('transparent','#8899bb','#ffffff20')}>Huỷ</button>
                 </div>
               </div>
+            )}
+
+            {preview && (
+              <PlanPreview plan={preview} mode={planMode} target={planMode === 'scale' ? planEnd : null}
+                srcName={projects.find((p: any) => p.id === copyFrom)?.name ?? ''} busy={creating}
+                onBack={() => setPreview(null)} onCreate={() => doCreate(preview)} />
             )}
 
             {/* Project List */}
