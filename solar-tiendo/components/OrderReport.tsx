@@ -1,7 +1,7 @@
 'use client'
 // Báo cáo ĐẶT HÀNG vật tư: vật tư trễ kế hoạch đặt hàng + kế hoạch đặt hàng tuần tới
 import { orderInfo, nextWeekRange } from '@/lib/order'
-import { fmtVN, diffDays } from '@/lib/schedule'
+import { fmtVN, diffDays, addDays } from '@/lib/schedule'
 import { fmtQty, todayVN } from '@/lib/qty'
 
 type Props = {
@@ -20,9 +20,11 @@ export default function OrderReport({ items, progressMap, ganttMap, subItems, de
   const late = mats.filter(x => x.o.late).sort((a, b) => b.o.lateDays - a.o.lateDays)
   const nextWeek = mats.filter(x => !x.o.ordered && x.o.planOrder && x.o.planOrder >= from && x.o.planOrder <= to)
     .sort((a, b) => a.o.planOrder!.localeCompare(b.o.planOrder!))
-  // Sắp tới hạn trong tuần này (sau hôm nay, trước tuần tới) — nhắc thêm
-  const soon = mats.filter(x => !x.o.ordered && x.o.planOrder && x.o.planOrder > today && x.o.planOrder < from)
+  // Tuần này: từ ngày mai tới Chủ nhật (hôm nay trở về trước đã tính vào "trễ")
+  const thisWeek = mats.filter(x => !x.o.ordered && x.o.planOrder && x.o.planOrder > today && x.o.planOrder < from)
     .sort((a, b) => a.o.planOrder!.localeCompare(b.o.planOrder!))
+  const ddmm = (d: string) => d.slice(8, 10) + '/' + d.slice(5, 7)
+  const thisWeekLabel = today >= addDays(from, -1) ? 'đã hết tuần' : `${ddmm(addDays(today, 1))} - ${ddmm(addDays(from, -1))}`
 
   const c = light
     ? { bg: '#fff', head: '#1F3864', headTx: '#fff', tx: '#1a1a1a', sub: '#555', bd: '#d0d7e2', alt: '#f4f7fb', bad: '#C62828', warn: '#B26A00', title: '#1F3864', okBg: '#f4f7fb' }
@@ -39,6 +41,35 @@ export default function OrderReport({ items, progressMap, ganttMap, subItems, de
   )
   const empty = (t: string) => (
     <div style={{ padding: '9px 12px', borderRadius: 8, fontSize: 11, background: c.okBg, color: c.sub, border: `1px solid ${c.bd}` }}>{t}</div>
+  )
+
+  const planTable = (list: typeof mats) => box(
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+          <thead style={{ background: c.head }}><tr>
+            <th style={th}>Vật tư</th><th style={th}>Đặt hàng KH</th><th style={th}>Gia công / giao</th>
+            <th style={th}>Có hàng KH</th><th style={th}>Hạng mục đang chờ</th>
+          </tr></thead>
+          <tbody>
+            {list.map(({ it, o }, i) => {
+              const w = waiting(it)
+              const lead = o.planOrder && o.planArrive ? diffDays(o.planOrder, o.planArrive) : it.order_days
+              return (
+                <tr key={it.id} style={{ background: i % 2 ? c.alt : 'transparent' }}>
+                  <td style={td}>
+                    <div style={{ fontWeight: 600 }}>{name(it)}</div>
+                    {subsText(it) && <div style={{ fontSize: 9.5, color: c.sub }}>{subsText(it)}</div>}
+                  </td>
+                  <td style={{ ...td, whiteSpace: 'nowrap', fontWeight: 700 }}>{fmtVN(o.planOrder)}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}>{lead != null ? `${lead} ngày` : '—'}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtVN(o.planArrive)}</td>
+                  <td style={{ ...td, fontSize: 9.5, color: c.sub }}>
+                    {w.length ? w.map(x => `#${x.no ?? x.stt} ${x.name}`).join(', ') : '—'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
   )
 
   if (mats.every(x => !x.o.planOrder)) return null     // chưa nhập kế hoạch vật tư nào
@@ -79,43 +110,17 @@ export default function OrderReport({ items, progressMap, ganttMap, subItems, de
         </table>
       )}
 
+      {/* Kế hoạch đặt hàng tuần này (các ngày còn lại) */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: c.title, margin: '12px 0 6px' }}>
+        🛒 Kế hoạch đặt hàng tuần này — {thisWeekLabel}
+      </div>
+      {thisWeek.length === 0 ? empty('Không còn vật tư nào cần đặt hàng trong tuần này') : planTable(thisWeek)}
+
       {/* Kế hoạch đặt hàng tuần tới */}
       <div style={{ fontSize: 12, fontWeight: 700, color: c.title, margin: '12px 0 6px' }}>
         🛒 Kế hoạch đặt hàng tuần tới — {weekLabel}
       </div>
-      {nextWeek.length === 0 ? empty('Không có vật tư nào cần đặt hàng trong tuần tới') : box(
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
-          <thead style={{ background: c.head }}><tr>
-            <th style={th}>Vật tư</th><th style={th}>Đặt hàng KH</th><th style={th}>Gia công / giao</th>
-            <th style={th}>Có hàng KH</th><th style={th}>Hạng mục đang chờ</th>
-          </tr></thead>
-          <tbody>
-            {nextWeek.map(({ it, o }, i) => {
-              const w = waiting(it)
-              const lead = o.planOrder && o.planArrive ? diffDays(o.planOrder, o.planArrive) : it.order_days
-              return (
-                <tr key={it.id} style={{ background: i % 2 ? c.alt : 'transparent' }}>
-                  <td style={td}>
-                    <div style={{ fontWeight: 600 }}>{name(it)}</div>
-                    {subsText(it) && <div style={{ fontSize: 9.5, color: c.sub }}>{subsText(it)}</div>}
-                  </td>
-                  <td style={{ ...td, whiteSpace: 'nowrap', fontWeight: 700 }}>{fmtVN(o.planOrder)}</td>
-                  <td style={{ ...td, whiteSpace: 'nowrap' }}>{lead != null ? `${lead} ngày` : '—'}</td>
-                  <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtVN(o.planArrive)}</td>
-                  <td style={{ ...td, fontSize: 9.5, color: c.sub }}>
-                    {w.length ? w.map(x => `#${x.no ?? x.stt} ${x.name}`).join(', ') : '—'}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      )}
-      {soon.length > 0 && (
-        <div style={{ fontSize: 10, color: c.warn, marginTop: 6 }}>
-          ⏰ Sắp tới hạn trong tuần này: {soon.map(({ it, o }) => `${name(it)} (${fmtVN(o.planOrder)})`).join(' · ')}
-        </div>
-      )}
+      {nextWeek.length === 0 ? empty('Không có vật tư nào cần đặt hàng trong tuần tới') : planTable(nextWeek)}
       <div style={{ fontSize: 9, color: c.sub, marginTop: 4 }}>
         Trễ đặt hàng = đã tới ngày “Đặt hàng (KH)” mà chưa tick bước đặt hàng (bước đầu tiên của hạng mục vật tư) và chưa có “Đặt hàng thực tế”.
       </div>
