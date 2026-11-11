@@ -297,7 +297,7 @@ export default function ReportPage() {
               borderRadius: printMode ? 0 : 10,
               display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                <BrandLogo size={60} />
+                <BrandLogo size={88} />
                 <div>
                   <div style={{ fontSize:16, fontWeight:700, color:'#fff' }}>
                     BÁO CÁO TIẾN ĐỘ THI CÔNG TUẦN {weekNum}
