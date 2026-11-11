@@ -2,7 +2,7 @@
 // Báo cáo ĐẶT HÀNG vật tư: vật tư trễ kế hoạch đặt hàng + kế hoạch đặt hàng tuần tới
 import { orderInfo, nextWeekRange } from '@/lib/order'
 import { fmtVN, diffDays, addDays } from '@/lib/schedule'
-import { fmtQty, todayVN } from '@/lib/qty'
+import { todayVN } from '@/lib/qty'
 
 type Props = {
   items: any[]; progressMap: Record<string, any>; ganttMap: Record<string, any>
@@ -32,9 +32,7 @@ export default function OrderReport({ items, progressMap, ganttMap, subItems, de
   const th: React.CSSProperties = { padding: '6px 8px', fontSize: 9.5, fontWeight: 600, color: c.headTx, textAlign: 'left', whiteSpace: 'nowrap' }
   const td: React.CSSProperties = { padding: '6px 8px', fontSize: 10.5, color: c.tx, borderTop: `1px solid ${c.bd}`, verticalAlign: 'top' }
   const name = (it: any) => `#${it.no ?? it.stt} ${it.name}`
-  const mainSubs = (it: any) => (subItems[it.id] ?? []).filter((s: any) => Number(s.quantity) > 0)
   const waiting = (it: any) => deps.filter(d => d.depends_on_item_id === it.id).map(d => byId[d.item_id]).filter(Boolean)
-  const subsText = (it: any) => mainSubs(it).map((s: any) => `${s.name} ${fmtQty(Number(s.quantity))}${s.unit ? ' ' + s.unit : ''}`).join(' · ')
 
   const box = (children: React.ReactNode) => (
     <div style={{ overflowX: 'auto', border: `1px solid ${c.bd}`, borderRadius: 8, background: c.bg }}>{children}</div>
@@ -57,7 +55,6 @@ export default function OrderReport({ items, progressMap, ganttMap, subItems, de
                 <tr key={it.id} style={{ background: i % 2 ? c.alt : 'transparent' }}>
                   <td style={td}>
                     <div style={{ fontWeight: 600 }}>{name(it)}</div>
-                    {subsText(it) && <div style={{ fontSize: 9.5, color: c.sub }}>{subsText(it)}</div>}
                   </td>
                   <td style={{ ...td, whiteSpace: 'nowrap', fontWeight: 700 }}>{fmtVN(o.planOrder)}</td>
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>{lead != null ? `${lead} ngày` : '—'}</td>
@@ -93,7 +90,6 @@ export default function OrderReport({ items, progressMap, ganttMap, subItems, de
                 <tr key={it.id} style={{ background: i % 2 ? c.alt : 'transparent' }}>
                   <td style={td}>
                     <div style={{ fontWeight: 600 }}>{name(it)}</div>
-                    {subsText(it) && <div style={{ fontSize: 9.5, color: c.sub }}>{subsText(it)}</div>}
                   </td>
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtVN(o.planOrder)}</td>
                   <td style={{ ...td, whiteSpace: 'nowrap', color: c.bad, fontWeight: 700 }}>
