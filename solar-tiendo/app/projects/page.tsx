@@ -38,9 +38,9 @@ export default function ProjectsPage() {
   const [isSuper,      setIsSuper]      = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
   const [editProject,  setEditProject]  = useState<any|null>(null)
-  const [editForm,     setEditForm]     = useState({ name:'', client:'', contractor:'', location:'', start_date:'', total_days:'' })
+  const [editForm,     setEditForm]     = useState({ name:'', client:'', contractor:'', location:'', capacity:'', start_date:'', total_days:'' })
   const [form, setForm] = useState({
-    name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60', location:''
+    name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60', location:'', capacity:''
   })
 
   useEffect(() => { loadProjects() }, [])
@@ -96,11 +96,14 @@ export default function ProjectsPage() {
     }
   }
 
+  // Công suất (kWp): chấp nhận 1.234,5 / 1234.5
+  const parseKwp = (v: string) => { const t = v.trim().replace(/\s/g, ''); if (!t) return null
+    const n = Number(/,\d{1,3}$/.test(t) ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '')); return isFinite(n) && n > 0 ? n : null }
   const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })
   const resetForm = () => {
     setShowForm(false); setCopyFrom(''); setCopyItems(true); setCopyPlan(false); setPlanMode('shift')
     setPlanEnd(''); setSrcPlan(null); setPreview(null)
-    setForm({ name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60', location:'' })
+    setForm({ name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60', location:'', capacity:'' })
   }
   // Chọn dự án nguồn → tải kế hoạch nguồn (để tính ngày hoàn thành dự kiến / xem trước)
   async function pickSource(id: string) {
@@ -134,7 +137,7 @@ export default function ProjectsPage() {
       if (!user) return
       if (copyFrom && copyItems) {
         // Tạo dự án mới + sao chép cấu hình (và kế hoạch nếu chọn) trong 1 lần
-        const { error } = await supabase.rpc('create_project_copy', {
+        const { data: newId, error } = await supabase.rpc('create_project_copy', {
           p_src: copyFrom, p_name: form.name, p_client: form.client, p_contractor: form.contractor,
           p_start: plan?.start ?? planStart,
           p_total_days: plan?.totalDays ?? (parseInt(form.total_days) || 60),
@@ -142,6 +145,8 @@ export default function ProjectsPage() {
           p_plan: plan ? { items: plan.items, subs: plan.subs } : null,
         })
         if (error) { alert('Lỗi: ' + error.message); return }
+        const kwp = parseKwp(form.capacity)
+        if (newId && kwp != null) await supabase.from('projects').update({ capacity_kwp: kwp }).eq('id', newId as any)
         resetForm(); loadProjects()
         return
       }
@@ -150,6 +155,7 @@ export default function ProjectsPage() {
         start_date: planStart,
         total_days: parseInt(form.total_days) || 60,
         location: form.location || null,
+        capacity_kwp: parseKwp(form.capacity),
       }).select().single()
       if (error || !proj) { alert('Lỗi: ' + error?.message); return }
       await supabase.from('project_members').insert({
@@ -199,6 +205,7 @@ export default function ProjectsPage() {
       client:     proj.client      ?? '',
       contractor: proj.contractor  ?? '',
       location:   proj.location    ?? '',
+      capacity:   proj.capacity_kwp != null ? String(proj.capacity_kwp) : '',
       start_date: proj.start_date  ?? '',
       total_days: String(proj.total_days ?? 60),
     })
@@ -211,6 +218,7 @@ export default function ProjectsPage() {
       client:     editForm.client,
       contractor: editForm.contractor,
       location:   editForm.location || null,
+      capacity_kwp: parseKwp(editForm.capacity),
       start_date: editForm.start_date,
       total_days: parseInt(editForm.total_days) || 60,
     }).eq('id', editProject.id)
@@ -336,9 +344,10 @@ export default function ProjectsPage() {
           </div>
           {[
             ['Tên dự án *',           'name',       'text',   'Điện mặt trời...'],
-            ['Chủ đầu tư',            'client',     'text',   'Công ty...'],
-            ['Nhà máy (nơi lắp đặt)', 'location',   'text',   'VD: Nhà máy ABC'],
-            ['Nhà thầu',              'contractor', 'text',   'TTCE-HTE'],
+            ['Chủ đầu tư (CĐT)',          'client',     'text',   'Công ty...'],
+            ['Chủ mái (nhà máy lắp đặt)', 'location',   'text',   'VD: Nhà máy ABC'],
+            ['Nhà thầu thi công',         'contractor', 'text',   'TTCE-HTE'],
+            ['Công suất lắp đặt (kWp)',   'capacity',   'text',   'VD: 1.200'],
           ].map(([label, key, type, ph]) => (
             <div key={key} style={{ marginBottom:10 }}>
               <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:3 }}>{label}</label>
@@ -474,9 +483,10 @@ export default function ProjectsPage() {
                 </div>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
                   {[['Tên dự án *','name','Điện mặt trời...','text'],
-                    ['Chủ đầu tư','client','Công ty...','text'],
-                    ['Nhà máy (nơi lắp đặt)','location','VD: Nhà máy Dệt Sợi ABC','text'],
-                    ['Nhà thầu','contractor','TTCE-HTE','text'],
+                    ['Chủ đầu tư (CĐT)','client','Công ty...','text'],
+                    ['Chủ mái (nhà máy lắp đặt)','location','VD: Nhà máy Dệt Sợi ABC','text'],
+                    ['Nhà thầu thi công','contractor','TTCE-HTE','text'],
+                    ['Công suất lắp đặt (kWp)','capacity','VD: 1.200','text'],
                   ].map(([lbl,key,ph,type]) => (
                     <div key={key}>
                       <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:4 }}>{lbl}</label>

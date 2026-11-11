@@ -1,4 +1,5 @@
 'use client'
+import React from 'react'
 import BrandLogo from '@/components/BrandLogo'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -301,8 +302,21 @@ export default function ReportPage() {
                   <div style={{ fontSize:16, fontWeight:700, color:'#fff' }}>
                     BÁO CÁO TIẾN ĐỘ THI CÔNG TUẦN {weekNum}
                   </div>
-                  <div style={{ fontSize:11, color:'#8899bb', marginTop:3 }}>
-                    {project?.name} · {project?.contractor} · {today}
+                  <div style={{ fontSize:12, color:'#c0d0ef', marginTop:3, fontWeight:600 }}>
+                    {project?.name} · {today}
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'auto 1fr', columnGap:8, rowGap:1, fontSize:11, color:'#8899bb', marginTop:4 }}>
+                    {([
+                      ['CĐT',               project?.client],
+                      ['Chủ mái',           project?.location],
+                      ['Nhà thầu thi công', project?.contractor],
+                      ['Công suất lắp đặt', project?.capacity_kwp != null
+                        ? `${Number(project.capacity_kwp).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kWp` : null],
+                    ] as [string, any][]).filter(([, v]) => v).map(([k, v]) => (
+                      <React.Fragment key={k}>
+                        <span>{k}:</span><span style={{ color:'#c8d8f0' }}>{v}</span>
+                      </React.Fragment>
+                    ))}
                   </div>
                   {projStart && (
                     <div style={{ fontSize:11, color:'#8899bb', marginTop:2 }}>
