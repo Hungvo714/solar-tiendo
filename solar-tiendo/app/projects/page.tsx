@@ -14,6 +14,7 @@ export default function ProjectsPage() {
   const [loading,   setLoading]   = useState(true)
   const [creating,  setCreating]  = useState(false)
   const [showForm,  setShowForm]  = useState(false)
+  const [copyFrom,  setCopyFrom]  = useState('')     // sao chép cấu hình từ dự án (tuỳ chọn)
   const [deleting,  setDeleting]  = useState<string|null>(null)
   const [copied,    setCopied]    = useState<string|null>(null)
   const [showMembers, setShowMembers] = useState<string|null>(null)
@@ -92,6 +93,18 @@ export default function ProjectsPage() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
+      if (copyFrom) {
+        // Tạo dự án mới + sao chép cấu hình (hạng mục, bước, điều kiện, vật tư, số lượng) trong 1 lần
+        const { error } = await supabase.rpc('create_project_copy', {
+          p_src: copyFrom, p_name: form.name, p_client: form.client, p_contractor: form.contractor,
+          p_start: form.start_date || null, p_total_days: parseInt(form.total_days) || 60, p_location: form.location || null,
+        })
+        if (error) { alert('Lỗi: ' + error.message); return }
+        setShowForm(false); setCopyFrom('')
+        setForm({ name:'', client:'', contractor:'TTCE-HTE', start_date:'', total_days:'60', location:'' })
+        loadProjects()
+        return
+      }
       const { data: proj, error } = await supabase.from('projects').insert({
         name: form.name, client: form.client, contractor: form.contractor,
         start_date: form.start_date || new Date().toISOString().split('T')[0],
@@ -227,7 +240,8 @@ export default function ProjectsPage() {
 
   async function removeMember(pid: string, uid: string) {
     if (!confirm('Xoá thành viên này khỏi dự án này?\n\nNếu họ không còn dự án nào, họ sẽ bị đăng xuất khi vào app.')) return
-    await supabase.from('project_members').delete().eq('project_id', pid).eq('user_id', uid)
+    const { error } = await supabase.from('project_members').delete().eq('project_id', pid).eq('user_id', uid)
+    if (error) alert(error.message.includes('Admin chính') ? 'Không thể gỡ Admin chính khỏi dự án.' : 'Lỗi: ' + error.message)
     loadMembers(pid)
   }
 
@@ -434,13 +448,30 @@ export default function ProjectsPage() {
                   ))}
                 </div>
                 <div style={{ marginBottom:14 }}>
+                  <label style={{ fontSize:10, color:'#8899bb', display:'block', marginBottom:4 }}>
+                    📋 Sao chép cấu hình từ dự án có sẵn (tuỳ chọn)
+                  </label>
+                  <select value={copyFrom} onChange={e => setCopyFrom(e.target.value)} style={{ ...S.inp, cursor:'pointer' }}>
+                    <option value="">— Không, dùng mẫu chuẩn —</option>
+                    {projects.filter((p: any) => p.role === 'admin' || isSuper).map((p: any) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  {copyFrom && (
+                    <div style={{ fontSize:9.5, color:'#8899bb', marginTop:6, lineHeight:1.6 }}>
+                      ✅ Copy: hạng mục (ẩn / thêm riêng / thứ tự), các bước & trọng số, điều kiện liên quan,
+                      số ngày gia công, danh sách vật tư & số lượng, cấu hình đo khối lượng.<br/>
+                      ❌ Không copy: ngày kế hoạch / thực tế, ngày cần vật tư, tick hoàn thành, khối lượng đã nhập,
+                      báo cáo, thành viên (Admin chính luôn là Admin của dự án).
+                    </div>
+                  )}
                 </div>
                 <div style={{ display:'flex', gap:8 }}>
                   <button onClick={createProject} disabled={!form.name || creating}
                     style={{ ...S.btn(form.name?'#F5A623':'#444', form.name?'#0d1b3e':'#888'), flex:1, padding:'10px' }}>
                     {creating ? '⏳ Đang tạo...' : '✓ Tạo dự án'}
                   </button>
-                  <button onClick={() => setShowForm(false)} style={S.btn('transparent','#8899bb','#ffffff20')}>Huỷ</button>
+                  <button onClick={() => { setShowForm(false); setCopyFrom('') }} style={S.btn('transparent','#8899bb','#ffffff20')}>Huỷ</button>
                 </div>
               </div>
             )}
