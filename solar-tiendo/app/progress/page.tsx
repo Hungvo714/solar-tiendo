@@ -517,7 +517,7 @@ export default function ProgressPage() {
                   return (
                     <span key={i} style={{ marginRight:8, whiteSpace:'nowrap' }}>
                       <b style={{ color:'#c0d0ef' }}>#{pre.no ?? pre.stt}</b> {pre.name}
-                      {' '}({pre.group_type === 'A' ? 'có hàng' : 'xong'} {fmtVN(pe)}{d.lag_days ? `, +${d.lag_days} ngày chờ` : ''})
+                      {' '}({pre.group_type === 'A' ? 'có hàng' : 'xong'} {fmtVN(pe)}{d.same_day ? ', làm cùng ngày' : ''}{d.lag_days ? `, +${d.lag_days} ngày chờ` : ''})
                     </span>
                   )
                 })}

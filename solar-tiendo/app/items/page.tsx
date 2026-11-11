@@ -14,7 +14,7 @@ type It = {
   order_days?: number; project_id: string|null; hidden: boolean; steps: Step[]
   no: number | null          // số thứ tự hiển thị liên tục (null nếu bị ẩn)
 }
-type Dep = { item_id: string; depends_on_item_id: string; lag_days?: number }
+type Dep = { item_id: string; depends_on_item_id: string; lag_days?: number; same_day?: boolean }
 type Zone = { id: string; label: string }
 
 const C = { bg:'#0a0f1e', card:'#0d1b3e', line:'#ffffff12', text:'#e8eaf0', mute:'#8899bb', acc:'#F5A623' }
@@ -107,7 +107,7 @@ export default function ItemsConfigPage() {
   async function reload(p = pid) {
     const [it, { data: d }] = await Promise.all([
       getItemsForProject(p, { includeHidden: true, includeHiddenSteps: true }),
-      supabase.from('project_item_dependencies').select('item_id, depends_on_item_id, lag_days').eq('project_id', p),
+      supabase.from('project_item_dependencies').select('item_id, depends_on_item_id, lag_days, same_day').eq('project_id', p),
     ])
     setItems(it as It[]); setDeps((d ?? []) as Dep[])
   }
@@ -128,6 +128,7 @@ export default function ItemsConfigPage() {
   const hidden  = items.filter(i => i.hidden)
   const depsOf  = (id: string) => deps.filter(d => d.item_id === id).map(d => byId[d.depends_on_item_id]).filter(Boolean)
   const lagOf   = (id: string, pre: string) => deps.find(d => d.item_id === id && d.depends_on_item_id === pre)?.lag_days ?? 0
+  const sameOf  = (id: string, pre: string) => !!deps.find(d => d.item_id === id && d.depends_on_item_id === pre)?.same_day
   const waitingOn = (id: string) => deps.filter(d => d.depends_on_item_id === id).map(d => byId[d.item_id]).filter(i => i && !i.hidden)
 
   const k = q.trim().toLowerCase()
@@ -141,14 +142,15 @@ export default function ItemsConfigPage() {
       {editDeps && (
         <DepsModal item={editDeps} items={visible} current={depsOf(editDeps.id).map(i => i.id)} busy={busy}
           lags={Object.fromEntries(deps.filter(d => d.item_id === editDeps.id).map(d => [d.depends_on_item_id, d.lag_days ?? 0]))}
+          same={Object.fromEntries(deps.filter(d => d.item_id === editDeps.id).map(d => [d.depends_on_item_id, !!d.same_day]))}
           onClose={() => setEditDeps(null)}
-          onSave={(ids, lags) => {
+          onSave={(ids, lags, same) => {
             if (createsCycle(editDeps.id, ids, deps)) {
               alert('Không lưu được: điều kiện này tạo vòng lặp (mục A chờ B, B lại chờ A). Kiểm tra lại các mục đã chọn.')
               return
             }
             run(async () => {
-              await rpc('set_item_dependencies', { pid, p_item: editDeps.id, p_depends: ids, p_lags: ids.map(id => lags[id] ?? 0) })
+              await rpc('set_item_dependencies', { pid, p_item: editDeps.id, p_depends: ids, p_lags: ids.map(id => lags[id] ?? 0), p_same: ids.map(id => !!same[id]) })
               setEditDeps(null)
             })
           }}/>
@@ -251,7 +253,7 @@ export default function ItemsConfigPage() {
                           <span style={{ color:C.mute }}>Chờ:</span>
                           {ds.length === 0 ? <span style={{ color:'#ffffff40' }}>—</span> : ds.map(d => (
                             <span key={d.id} title={d.name} style={{ background:'#ffffff0d', borderRadius:5, padding:'1px 6px',
-                              color:GROUP[d.group_type]?.c ?? C.text }}>#{d.no}{lagOf(it.id, d.id) ? ` +${lagOf(it.id, d.id)}n` : ''}</span>
+                              color:GROUP[d.group_type]?.c ?? C.text }}>#{d.no}{sameOf(it.id, d.id) ? ' (cùng ngày)' : ''}{lagOf(it.id, d.id) ? ` +${lagOf(it.id, d.id)}n` : ''}</span>
                           ))}
                           {hiddenDeps.length > 0 && (
                             <span style={{ color:'#ffffff40' }} title="Các mục này đang bị ẩn nên không áp dụng">
@@ -355,12 +357,13 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
   )
 }
 
-function DepsModal({ item, items, current, lags, busy, onClose, onSave }: {
-  item: It; items: It[]; current: string[]; lags: Record<string, number>; busy: boolean
-  onClose: () => void; onSave: (ids: string[], lags: Record<string, number>) => void
+function DepsModal({ item, items, current, lags, same, busy, onClose, onSave }: {
+  item: It; items: It[]; current: string[]; lags: Record<string, number>; same: Record<string, boolean>; busy: boolean
+  onClose: () => void; onSave: (ids: string[], lags: Record<string, number>, same: Record<string, boolean>) => void
 }) {
   const [val, setVal] = useState<string[]>(current)
   const [lag, setLag] = useState<Record<string, number>>(lags)
+  const [sd, setSd] = useState<Record<string, boolean>>(same)
   const selected = items.filter(i => val.includes(i.id)).sort((a, b) => (a.no ?? 0) - (b.no ?? 0))
   return (
     <Modal title={`🔗 Điều kiện của mục #${item.no}`} onClose={onClose}>
@@ -380,16 +383,24 @@ function DepsModal({ item, items, current, lags, busy, onClose, onSave }: {
                 onChange={e => setLag(prev => ({ ...prev, [p.id]: Math.max(0, Math.min(365, parseInt(e.target.value) || 0)) }))}
                 style={{ ...inp, width:64 }}/>
               <span style={{ fontSize:11, color:C.mute, width:36 }}>ngày</span>
+              {p.group_type !== 'A' ? (
+                <label title="Được bắt đầu ngay trong ngày mục này hoàn thành" style={{ display:'flex', gap:4, alignItems:'center',
+                  fontSize:11, color: sd[p.id] ? '#4ade80' : C.mute, cursor:'pointer', width:86, whiteSpace:'nowrap' }}>
+                  <input type="checkbox" checked={!!sd[p.id]} onChange={e => setSd(prev => ({ ...prev, [p.id]: e.target.checked }))}/>
+                  Cùng ngày
+                </label>
+              ) : <span style={{ width:86 }}/>}
             </div>
           ))}
           <div style={{ fontSize:10, color:C.mute, lineHeight:1.6, marginTop:4 }}>
             Vật tư: bắt đầu được <b>ngay trong ngày có hàng</b> + số ngày chờ.<br/>
-            Thi công: bắt đầu <b>ngày hôm sau khi xong</b> + số ngày chờ (vd đổ bê tông → chờ 7 ngày).
+            Thi công: bắt đầu <b>ngày hôm sau khi xong</b> + số ngày chờ (vd đổ bê tông → chờ 7 ngày);
+            tick <b>Cùng ngày</b> nếu được bắt đầu ngay trong ngày mục trước hoàn thành (vd COD ngay ngày xong chạy thử).
           </div>
         </div>
       )}
       <div style={{ display:'flex', gap:8, marginTop:14 }}>
-        <button disabled={busy} onClick={() => onSave(val, lag)} style={btn('#375623', '#fff')}>{busy ? '⏳' : '✓ Lưu điều kiện'}</button>
+        <button disabled={busy} onClick={() => onSave(val, lag, sd)} style={btn('#375623', '#fff')}>{busy ? '⏳' : '✓ Lưu điều kiện'}</button>
         <button onClick={onClose} style={btn('transparent', C.mute, '#ffffff20')}>Huỷ</button>
       </div>
     </Modal>

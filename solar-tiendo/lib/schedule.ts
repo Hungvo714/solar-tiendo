@@ -5,10 +5,11 @@
 // Liên kết "X chờ Y" (+ lag_days ngày chờ):
 //   - Y là vật tư   → X bắt đầu sớm nhất = ngày có hàng của Y + lag (được làm ngay trong ngày có hàng)
 //   - Y là thi công → X bắt đầu sớm nhất = ngày hoàn thành của Y + 1 + lag
+//     (same_day: được làm CÙNG NGÀY Y hoàn thành → + 0 thay vì + 1)
 // Kế hoạch so với kế hoạch (chặn + gợi ý); thực tế so với thực tế (chỉ cảnh báo, không bao giờ tự sửa).
 
 export type Dep = {
-  item_id: string; depends_on_item_id: string; lag_days?: number
+  item_id: string; depends_on_item_id: string; lag_days?: number; same_day?: boolean
   item_stt?: number; depends_on_stt?: number
 }
 type G = Record<string, any>
@@ -29,7 +30,7 @@ export const fmtVN = (d?: string | null) => {
 }
 
 const offsetOf = (pre: ItemLite | undefined, dep: Dep) =>
-  (pre?.group_type === 'A' ? 0 : 1) + Math.max(0, dep.lag_days ?? 0)
+  (pre?.group_type === 'A' || dep.same_day ? 0 : 1) + Math.max(0, dep.lag_days ?? 0)
 
 export type StartReason = { dep: Dep; pre: ItemLite; preDate: string; earliest: string }
 

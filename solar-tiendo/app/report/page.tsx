@@ -309,7 +309,7 @@ export default function ReportPage() {
                     {([
                       ['CĐT',               project?.client],
                       ['Chủ mái',           project?.location],
-                      ['Nhà thầu thi công', project?.contractor],
+                      ['Thi công',          project?.contractor],
                       ['Công suất lắp đặt', project?.capacity_kwp != null
                         ? `${Number(project.capacity_kwp).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} kWp` : null],
                     ] as [string, any][]).filter(([, v]) => v).map(([k, v]) => (

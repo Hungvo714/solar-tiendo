@@ -85,7 +85,7 @@ export async function getItemsForProject(projectId: string,
 // chỉ giữ điều kiện giữa các mục đang hiển thị.
 export async function getProjectDependencies(projectId: string, items: any[]) {
   const { data } = await supabase.from('project_item_dependencies')
-    .select('item_id, depends_on_item_id, lag_days').eq('project_id', projectId)
+    .select('item_id, depends_on_item_id, lag_days, same_day').eq('project_id', projectId)
   const sttOf: Record<string, number> = {}
   for (const it of items) sttOf[it.id] = it.stt
   return (data ?? [])
@@ -94,6 +94,7 @@ export async function getProjectDependencies(projectId: string, items: any[]) {
       item_stt: sttOf[d.item_id], depends_on_stt: sttOf[d.depends_on_item_id],
       item_id: d.item_id as string, depends_on_item_id: d.depends_on_item_id as string,
       lag_days: (d.lag_days ?? 0) as number,
+      same_day: !!d.same_day,
     }))
 }
 
