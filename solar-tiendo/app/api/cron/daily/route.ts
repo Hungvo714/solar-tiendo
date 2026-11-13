@@ -16,6 +16,7 @@ import { sendEmail } from '@/lib/email'
 //   ALERT_FROM                 (tuỳ chọn) người gửi, mặc định "Solar Tiến Độ <onboarding@resend.dev>"
 
 export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
 export const maxDuration = 60
 
 const INACTIVE_DAYS = 7
@@ -39,7 +40,11 @@ export async function GET(req: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!serviceKey) return NextResponse.json({ error: 'Thiếu SUPABASE_SERVICE_ROLE_KEY' }, { status: 500 })
-  const db = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  const db = createClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    // Không để Next.js lưu đệm kết quả truy vấn (trước đây cron đọc mãi kết quả cũ từ lần chạy đầu)
+    global: { fetch: (input: any, init?: any) => fetch(input, { ...init, cache: 'no-store' }) },
+  })
 
   const reqUrl = new URL(req.url)
   const forceBackup = reqUrl.searchParams.get('backup') === '1'

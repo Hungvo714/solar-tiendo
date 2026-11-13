@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js'
 //   action = 'delete'       { userId }
 
 export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
 const ROLES = ['admin', 'editor', 'viewer']
 const err = (msg: string, status = 400) => NextResponse.json({ error: msg }, { status })
 
@@ -15,7 +16,11 @@ export async function POST(req: Request) {
   const url        = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !serviceKey) return err('Máy chủ chưa cấu hình SUPABASE_SERVICE_ROLE_KEY. Thêm biến này trên Vercel rồi Redeploy.', 500)
-  const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  const admin = createClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    // Không để Next.js lưu đệm kết quả truy vấn (trước đây cron đọc mãi kết quả cũ từ lần chạy đầu)
+    global: { fetch: (input: any, init?: any) => fetch(input, { ...init, cache: 'no-store' }) },
+  })
 
   // 1) Xác thực người gọi + kiểm tra là Admin chính
   const token = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')

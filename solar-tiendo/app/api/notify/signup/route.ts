@@ -6,13 +6,18 @@ import { sendEmail, escapeHtml } from '@/lib/email'
 // Xác thực bằng mã bí mật lưu trong app_meta.notify_secret (chỉ service role đọc được).
 
 export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
 export const maxDuration = 30
 
 export async function POST(req: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!serviceKey) return NextResponse.json({ error: 'Thiếu SUPABASE_SERVICE_ROLE_KEY' }, { status: 500 })
-  const db = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  const db = createClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    // Không để Next.js lưu đệm kết quả truy vấn (trước đây cron đọc mãi kết quả cũ từ lần chạy đầu)
+    global: { fetch: (input: any, init?: any) => fetch(input, { ...init, cache: 'no-store' }) },
+  })
 
   let body: any
   try { body = await req.json() } catch { return NextResponse.json({ error: 'bad json' }, { status: 400 }) }
