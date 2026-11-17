@@ -9,6 +9,7 @@ import type { QtyLog } from '@/lib/queries'
 import { QtyStepPanel, QtyConfig, isQtyStep, MatGroup } from '@/components/Qty'
 import { orderInfo, lateOrderLabel } from '@/lib/order'
 import MaterialsExcel from '@/components/MaterialsExcel'
+import ClearDataModal from '@/components/ClearDataModal'
 import { addDays, diffDays, fmtVN, earliestPlanStart, requiredArrival, cascadePlan, actualWarnings } from '@/lib/schedule'
 import type { Dep, PlanChange, StartReason } from '@/lib/schedule'
 
@@ -90,25 +91,11 @@ export default function ProgressPage() {
     load()
   }, [])
 
-  async function resetAll() {
-    if (!confirm('⚠️ Xóa TẤT CẢ dữ liệu đã nhập của dự án này?\n\nBao gồm:\n- Tất cả tick hoàn thành / N/A\n- Tất cả ngày BD/HT kế hoạch và thực tế\n- Toàn bộ khối lượng đã nhập\n\nHành động này KHÔNG THỂ hoàn tác!')) return
-    if (!confirm('Xác nhận lần 2: Bạn chắc chắn muốn xóa hết?')) return
-
-    if (!isSuper) { alert('Chỉ Admin chính được xoá toàn bộ dữ liệu dự án.'); return }
-    const typed = prompt(`Gõ lại chính xác tên dự án để xác nhận:\n${project?.name ?? ''}`)
-    if (typed == null) return
-    if (typed.trim() !== (project?.name ?? '').trim()) { alert('Tên không khớp — đã huỷ.'); return }
-    // Thứ tự: nhật ký khối lượng → tick → ngày
-    const r1 = await supabase.from('step_qty_logs').delete().eq('project_id', projectId)
-    const r2 = await supabase.from('progress').delete().eq('project_id', projectId)
-    const r3 = await supabase.from('gantt_dates').delete().eq('project_id', projectId)
-    const err = r1.error || r2.error || r3.error
-    if (err) { alert('Lỗi: ' + err.message); return }
-    // Reset state
-    setProgressMap({})
-    setGanttMap({})
-    alert('✅ Đã xóa toàn bộ dữ liệu. Trang sẽ tải lại...')
-    window.location.reload()
+  // Xoá dữ liệu theo nhóm (chỉ Admin chính) — mở bảng chọn
+  const [showClear, setShowClear] = useState(false)
+  function resetAll() {
+    if (!isSuper) { alert('Chỉ Admin chính được xoá dữ liệu dự án.'); return }
+    setShowClear(true)
   }
 
   async function toggleSubItem(itemId: string, subId: string, isDone: boolean) {
@@ -943,6 +930,10 @@ export default function ProgressPage() {
 
         {/* Thanh công cụ: Excel vật tư · Reset (chỉ Admin chính) */}
         <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', marginBottom:6 }}>
+          {showClear && (
+            <ClearDataModal projectId={projectId} projectName={project?.name ?? ''}
+              onClose={() => setShowClear(false)} onDone={() => window.location.reload()} />
+          )}
           <MaterialsExcel projectId={projectId} projectName={project?.name ?? ''}
             matItems={items.filter((i: any) => i.group_type === 'A')} subItems={subItems}
             canEdit={!isViewer || isSuper} onApplied={reloadMaterials} />
@@ -954,7 +945,7 @@ export default function ProgressPage() {
                 border:'1px solid #FF444440', borderRadius:8,
                 color:'#FF8888', fontFamily:'inherit', fontSize:10,
                 cursor:'pointer', display:'flex', alignItems:'center', gap:5 }}>
-              🗑️ Xóa hết dữ liệu nhập
+              🗑️ Xoá dữ liệu đã nhập…
             </button>
           </div>
         )}
