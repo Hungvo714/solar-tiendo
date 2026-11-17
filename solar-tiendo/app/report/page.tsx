@@ -61,7 +61,7 @@ export default function ReportPage() {
       const aItems = (it as any[]).filter((i:any) => i.group_type === 'A').map((i:any) => i.id)
       const [si, dp] = await Promise.all([getSubItems(pid, aItems), getProjectDependencies(pid, it as any[])])
       setSubItems(si); setDeps(dp)
-      // Tính tuần số từ ngày BD dự án (mục 24/26)
+      // Tính tuần số từ ngày BD dự án (hạng mục thi công B sớm nhất)
       const { weekNum: wn } = getProjectDates(it as any[], gm)
       setWeekNum(String(wn))
       setLoading(false)

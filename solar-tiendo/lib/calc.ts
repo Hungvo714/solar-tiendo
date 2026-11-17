@@ -56,7 +56,15 @@ export function elapsedDays(startDate: string) {
 }
 
 export function getProjectDates(items: any[], ganttMap: Record<string, any>) {
-  // BD dự án = ngày BD của mục Chuẩn bị mặt bằng (stt=24) hoặc Bàn giao mặt bằng mái (stt=26)
+  // BD dự án = ngày bắt đầu SỚM NHẤT trong các hạng mục THI CÔNG (nhóm B)
+  //   mỗi hạng mục lấy BD thực tế nếu có, không thì BD kế hoạch
+  // (dự phòng: mục 24 / 26 như trước, rồi ngày sớm nhất trong mọi hạng mục)
+  let startB: string | null = null
+  for (const it of items) {
+    if ((it.group_type ?? 'B') !== 'B') continue
+    const g = ganttMap[it.id]; const d = g?.actual_start || g?.plan_start
+    if (d && (!startB || d < startB)) startB = d
+  }
   const startItem = items.find(it => it.stt === 24) || items.find(it => it.stt === 26)
   const endItem   = items.find(it => it.stt === 55) // COD
 
@@ -73,7 +81,7 @@ export function getProjectDates(items: any[], ganttMap: Record<string, any>) {
     }
     return v
   }
-  const startDate = startG?.actual_start || startG?.plan_start || pick('actual_start', 'plan_start', (a, b) => a < b)
+  const startDate = startB || startG?.actual_start || startG?.plan_start || pick('actual_start', 'plan_start', (a, b) => a < b)
   const endDate   = endG?.actual_end     || endG?.plan_end     || pick('actual_end', 'plan_end', (a, b) => a > b)
 
   const now = new Date(); now.setHours(0,0,0,0)
