@@ -150,7 +150,7 @@ export default function ItemsConfigPage() {
               return
             }
             run(async () => {
-              await rpc('set_item_dependencies', { pid, p_item: editDeps.id, p_depends: ids, p_lags: ids.map(id => lags[id] ?? 0), p_same: ids.map(id => !!same[id]) })
+              await rpc('set_item_dependencies', { pid, p_item: editDeps.id, p_depends: ids, p_lags: ids.map(id => lags[id] ?? 0), p_same: ids.map(id => same[id] ?? true) })
               setEditDeps(null)
             })
           }}/>
@@ -385,8 +385,8 @@ function DepsModal({ item, items, current, lags, same, busy, onClose, onSave }: 
               <span style={{ fontSize:11, color:C.mute, width:36 }}>ngày</span>
               {p.group_type !== 'A' ? (
                 <label title="Được bắt đầu ngay trong ngày mục này hoàn thành" style={{ display:'flex', gap:4, alignItems:'center',
-                  fontSize:11, color: sd[p.id] ? '#4ade80' : C.mute, cursor:'pointer', width:86, whiteSpace:'nowrap' }}>
-                  <input type="checkbox" checked={!!sd[p.id]} onChange={e => setSd(prev => ({ ...prev, [p.id]: e.target.checked }))}/>
+                  fontSize:11, color: (sd[p.id] ?? true) ? '#4ade80' : C.mute, cursor:'pointer', width:86, whiteSpace:'nowrap' }}>
+                  <input type="checkbox" checked={sd[p.id] ?? true} onChange={e => setSd(prev => ({ ...prev, [p.id]: e.target.checked }))}/>
                   Cùng ngày
                 </label>
               ) : <span style={{ width:86 }}/>}
@@ -394,8 +394,8 @@ function DepsModal({ item, items, current, lags, same, busy, onClose, onSave }: 
           ))}
           <div style={{ fontSize:10, color:C.mute, lineHeight:1.6, marginTop:4 }}>
             Vật tư: bắt đầu được <b>ngay trong ngày có hàng</b> + số ngày chờ.<br/>
-            Thi công: bắt đầu <b>ngày hôm sau khi xong</b> + số ngày chờ (vd đổ bê tông → chờ 7 ngày);
-            tick <b>Cùng ngày</b> nếu được bắt đầu ngay trong ngày mục trước hoàn thành (vd COD ngay ngày xong chạy thử).
+            Thi công: bắt đầu từ ngày mục trước hoàn thành + số ngày chờ (vd đổ bê tông → chờ 7 ngày);
+            mặc định <b>Cùng ngày</b>: được bắt đầu ngay trong ngày mục trước hoàn thành; bỏ tick nếu phải chờ sang hôm sau.
           </div>
         </div>
       )}

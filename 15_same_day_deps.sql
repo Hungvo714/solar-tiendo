@@ -172,3 +172,7 @@ $$;
 revoke execute on function public.create_project_copy(uuid, text, text, text, date, int, text, jsonb) from public, anon;
 grant  execute on function public.create_project_copy(uuid, text, text, text, date, int, text, jsonb) to authenticated;
 
+
+-- (migration same_day_default_all, 27/11) Mặc định CÙNG NGÀY cho mọi điều kiện:
+--   bật same_day cho toàn bộ điều kiện hiện có (mẫu + mọi dự án), cột mặc định true.
+--   Bản cũ: backups.deps_all_20261127, backups.item_deps_tmpl_20261127
